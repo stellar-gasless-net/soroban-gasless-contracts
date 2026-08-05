@@ -3,6 +3,9 @@ use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Env, Symbol, Vec, Val
 };
 
+pub mod errors;
+use errors::ForwarderError;
+
 #[contract]
 pub struct TrustedForwarderContract;
 
@@ -11,7 +14,7 @@ impl TrustedForwarderContract {
     /// Initialize the Trusted Forwarder with domain parameters
     pub fn init(env: Env, admin: Address, version: Symbol) {
         if env.storage().instance().has(&symbol_short!("admin")) {
-            panic!("Already initialized");
+            panic!("{}", ForwarderError::AlreadyInitialized as u32);
         }
         admin.require_auth();
         env.storage().instance().set(&symbol_short!("admin"), &admin);
@@ -34,14 +37,14 @@ impl TrustedForwarderContract {
         // 2. Enforce deadline safety check against current ledger timestamp
         let current_time = env.ledger().timestamp();
         if current_time > deadline {
-            panic!("Forwarder: transaction expired deadline");
+            panic!("{}", ForwarderError::ExpiredDeadline as u32);
         }
 
         // 3. Verify and consume sequential nonce to prevent replay attacks
         let nonce_key = (symbol_short!("nonce"), user.clone());
         let current_nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
         if nonce != current_nonce {
-            panic!("Forwarder: invalid nonce sequence");
+            panic!("{}", ForwarderError::InvalidNonceSequence as u32);
         }
         env.storage().persistent().set(&nonce_key, &(current_nonce + 1));
 
