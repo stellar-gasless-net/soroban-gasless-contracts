@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "contracts/trusted-forwarder",
     "contracts/token-paymaster",
@@ -6,6 +7,9 @@ members = [
     "contracts/account-abstraction-wallet",
     "contracts/gas-estimator",
 ]
+
+[workspace.dependencies]
+soroban-sdk = "21.2.0"
 
 [profile.release]
 opt-level = "z"
