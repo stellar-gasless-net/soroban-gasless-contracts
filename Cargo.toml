@@ -3,6 +3,7 @@ members = [
     "contracts/trusted-forwarder",
     "contracts/token-paymaster",
     "contracts/voucher-paymaster",
+    "contracts/account-abstraction-wallet",
 ]
 
 [profile.release]
