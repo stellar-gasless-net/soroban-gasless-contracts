@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol, Vec, Val};
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec, Val};
 
 #[contract]
 pub struct GasEstimatorContract;
@@ -8,9 +8,9 @@ pub struct GasEstimatorContract;
 impl GasEstimatorContract {
     /// Estimate gas footprint and CPU instruction overhead for meta-transaction execution
     pub fn estimate_execution_overhead(
-        env: Env,
-        target: Address,
-        function: Symbol,
+        _env: Env,
+        _target: Address,
+        _function: Symbol,
         args: Vec<Val>,
     ) -> u64 {
         // Base gas overhead for forwarder verification

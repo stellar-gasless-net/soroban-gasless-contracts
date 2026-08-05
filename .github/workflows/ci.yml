@@ -15,6 +15,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - name: Precise ed25519-dalek update
+        run: cargo update -p ed25519-dalek@3.0.0 --precise 2.2.0 || true
       - name: Run Cargo Test
         run: cargo test --all
       - name: Build WASM
