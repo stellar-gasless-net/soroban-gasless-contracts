@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, BytesN};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
 
 #[contract]
 pub struct VoucherPaymasterContract;
@@ -30,3 +30,6 @@ impl VoucherPaymasterContract {
         true
     }
 }
+
+#[cfg(test)]
+mod test;

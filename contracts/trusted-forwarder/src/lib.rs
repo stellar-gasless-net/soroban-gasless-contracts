@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, vec, Address, BytesN, Env, Symbol, Vec, Val
+    contract, contractimpl, symbol_short, Address, Env, Symbol, Vec, Val
 };
 
 #[contract]
@@ -51,46 +51,10 @@ impl TrustedForwarderContract {
         // 5. Emit Forwarded Event for relayer indexer tracking
         env.events().publish(
             (symbol_short!("forward"), user, target_contract),
-            (function, nonce, deadline),
+            (function, nonce),
         );
 
         result
-    }
-
-    /// Execute multiple meta-transactions atomically in a single batch
-    pub fn execute_batch(
-        env: Env,
-        user: Address,
-        targets: Vec<Address>,
-        functions: Vec<Symbol>,
-        args_list: Vec<Vec<Val>>,
-        start_nonce: u64,
-        deadline: u64,
-    ) {
-        user.require_auth();
-
-        let len = targets.len();
-        if len != functions.len() || len != args_list.len() {
-            panic!("Batch parameters length mismatch");
-        }
-
-        let mut current_nonce = start_nonce;
-        for i in 0..len {
-            let target = targets.get(i).unwrap();
-            let func = functions.get(i).unwrap();
-            let args = args_list.get(i).unwrap();
-
-            Self::execute_forwarded(
-                env.clone(),
-                user.clone(),
-                target,
-                func,
-                args,
-                current_nonce,
-                deadline,
-            );
-            current_nonce += 1;
-        }
     }
 
     /// Read the current expected nonce for a given user address.

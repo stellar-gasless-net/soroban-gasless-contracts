@@ -1,14 +1,21 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, BytesN, Env, Symbol, Vec, Val, auth::Context
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec, Val
 };
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionData {
+    pub allowed_contract: Address,
+    pub expires_at: u64,
+}
 
 #[contract]
 pub struct SmartAccountWalletContract;
 
 #[contractimpl]
 impl SmartAccountWalletContract {
-    /// Initialize Smart Account with owner key & optional WebAuthn Passkey public key
+    /// Initialize Smart Account with owner key & WebAuthn Passkey public key
     pub fn init(env: Env, owner: Address, passkey_pubkey: BytesN<64>) {
         if env.storage().instance().has(&symbol_short!("owner")) {
             panic!("Wallet already initialized");
@@ -29,8 +36,13 @@ impl SmartAccountWalletContract {
         let owner: Address = env.storage().instance().get(&symbol_short!("owner")).unwrap();
         owner.require_auth();
 
-        let session_data = (allowed_contract, expires_at);
-        env.storage().persistent().set(&(symbol_short!("sess"), session_key.clone()), &session_data);
+        let session_data = SessionData {
+            allowed_contract: allowed_contract.clone(),
+            expires_at,
+        };
+        
+        let key = (symbol_short!("sess"), session_key.clone());
+        env.storage().persistent().set(&key, &session_data);
 
         env.events().publish(
             (symbol_short!("sess_add"), session_key),
@@ -51,7 +63,7 @@ impl SmartAccountWalletContract {
         let result: Val = env.invoke_contract(&target, &function, args);
         
         env.events().publish(
-            (symbol_short!("wallet_exec"), target),
+            (symbol_short!("wal_exec"), target),
             (function, result),
         );
 

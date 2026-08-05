@@ -1,13 +1,16 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol, token};
+use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env};
 
 #[contract]
 pub struct TokenPaymasterContract;
 
 #[contractimpl]
 impl TokenPaymasterContract {
-    /// Initialize Paymaster with sponsored SAC token (e.g. USDC) and exchange rate
+    /// Initialize Paymaster with sponsored SAC token (e.g. USDC) and fee per transaction
     pub fn init(env: Env, admin: Address, token: Address, fee_per_tx: i128) {
+        if env.storage().instance().has(&symbol_short!("admin")) {
+            panic!("Already initialized");
+        }
         admin.require_auth();
         env.storage().instance().set(&symbol_short!("admin"), &admin);
         env.storage().instance().set(&symbol_short!("token"), &token);
@@ -30,3 +33,6 @@ impl TokenPaymasterContract {
         );
     }
 }
+
+#[cfg(test)]
+mod test;
