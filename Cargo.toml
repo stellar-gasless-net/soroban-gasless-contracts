@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "contracts/trusted-forwarder",
+    "contracts/token-paymaster",
+    "contracts/voucher-paymaster",
+]
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = false
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
