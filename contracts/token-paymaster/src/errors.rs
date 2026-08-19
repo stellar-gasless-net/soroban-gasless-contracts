@@ -5,8 +5,7 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum PaymasterError {
     AlreadyInitialized = 1,
-    InsufficientUserBalance = 2,
-    InvalidFeeToken = 3,
-    EmergencyPaused = 4,
-    UnauthorizedAdmin = 5,
+    UnauthorizedAdmin = 2,
+    InsufficientBalance = 3,
+    InvalidFeeAmount = 4,
 }

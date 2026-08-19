@@ -40,13 +40,18 @@ impl TrustedForwarderContract {
             panic!("{}", ForwarderError::ExpiredDeadline as u32);
         }
 
-        // 3. Verify and consume sequential nonce to prevent replay attacks
+        // 3. Verify and consume sequential nonce with storage TTL extension
         let nonce_key = (symbol_short!("nonce"), user.clone());
         let current_nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
         if nonce != current_nonce {
             panic!("{}", ForwarderError::InvalidNonceSequence as u32);
         }
-        env.storage().persistent().set(&nonce_key, &(current_nonce + 1));
+        
+        let new_nonce = current_nonce + 1;
+        env.storage().persistent().set(&nonce_key, &new_nonce);
+        
+        // Extend storage TTL by 100,000 ledgers (approx 5 days) to keep persistent nonce active
+        env.storage().persistent().extend_ttl(&nonce_key, 100_000, 100_000);
 
         // 4. Dispatch invocation to target contract
         let result: Val = env.invoke_contract(&target_contract, &function, args);
