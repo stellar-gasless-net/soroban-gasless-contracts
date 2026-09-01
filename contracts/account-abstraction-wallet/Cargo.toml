@@ -11,3 +11,4 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+p256 = { version = "0.13", features = ["ecdsa"] }

@@ -84,7 +84,8 @@ This describes what each contract's code does *today*, verified against the sour
 
 ### 3. Smart Account Wallet (`account-abstraction-wallet`)
 * **Implemented**: an owner-controlled wallet that dispatches calls via `execute()`, plus a `SessionData` record (allowed contract + expiry) written by `add_session_key`.
-* **Not implemented yet, and this is the most important gap in the whole repo**: the contract stores a `passkey_pubkey` field but never verifies it against anything. There is no `secp256r1`/WebAuthn signature check anywhere in this contract, and no `CustomAccountInterface`/`__check_auth` implementation — auth is just the standard Soroban `Address.require_auth()` on the owner. Passkey signing isn't wired into on-chain auth yet. Session keys are stored but `execute()` doesn't check or enforce them (any call still requires the owner, not a session key).
+* **`verify_passkey_signature()` is implemented and tested**: real WebAuthn signature verification — checks the requested challenge is actually embedded in `clientDataJSON`, reconstructs `authenticatorData || SHA-256(clientDataJSON)` per the WebAuthn spec, and verifies the secp256r1 signature via `env.crypto().secp256r1_verify()` against the wallet's stored 65-byte SEC-1 public key. Covered by 3 tests using a real P-256 keypair (accepts a valid signature, rejects a challenge not present in `clientDataJSON`, rejects tampered `authenticatorData`).
+* **Not implemented yet**: this verification function isn't wired into the account's actual authorization flow — `execute()` still uses standard Soroban `Address.require_auth()` on the owner, not `CustomAccountInterface`/`__check_auth`. So passkey signatures can be verified, but can't yet actually authorize a transaction on their own. That wiring is the natural next step. Session keys are also still stored but unenforced — `execute()` doesn't check them.
 
 ### 4. Gas Estimator (`gas-estimator`)
 * **Not implemented**: `estimate_execution_overhead` returns a hardcoded formula (`5000 + args.len() * 100`) and ignores the target contract and function entirely. It does not measure real Soroban resource usage. Treat this contract as a placeholder — see the Phase 2 roadmap below.
@@ -195,11 +196,11 @@ Before contributing code or opening pull requests, please review our contributor
 ### Phase 1 (Built, unaudited)
 - [x] All 5 contracts compile with a passing `cargo test --all` (9 tests total). `trusted-forwarder`'s replay-guard and deadline-expiry logic and `gas-estimator`'s formula are directly tested; the paymaster/voucher/wallet contracts each have one initialization-level test — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
 - [x] Relayer engine with multi-keypair rotation and real Soroban RPC pre-flight simulation (see `stellar-gasless-relayer`).
-- [x] WebAuthn passkey signature request (browser-side only — see the "not implemented yet" note on `account-abstraction-wallet` above; the signature isn't verified on-chain yet).
+- [x] WebAuthn passkey signature request (browser-side, SDK) and on-chain secp256r1 signature verification (contract, tested) — see `account-abstraction-wallet` above. Not yet wired into the account's actual `require_auth()` flow.
 - [x] Console UI mockup (no backend — see `gasless-relayer-dashboard`).
 
 ### Phase 2 (Upcoming)
-- [ ] **On-chain passkey verification**: wire `secp256r1`/WebAuthn signature checking into `account-abstraction-wallet`'s auth — currently the stored passkey key is unused.
+- [ ] **Wire passkey verification into account auth**: `verify_passkey_signature()` exists and is tested, but `execute()` still authorizes via the owner `Address`, not via `CustomAccountInterface`/`__check_auth` using the passkey.
 - [ ] **Soroban Gas Estimator**: replace the current hardcoded placeholder formula in `gas-estimator` with a real resource-usage measurement.
 - [ ] **Merkle-proof vouchers**: replace `voucher-paymaster`'s simple used-ID check with real Merkle inclusion proofs.
 - [ ] **Multi-Sig Paymaster Governance Vaults**: Multi-signature approval thresholds for depositing and withdrawing XLM gas reserves.

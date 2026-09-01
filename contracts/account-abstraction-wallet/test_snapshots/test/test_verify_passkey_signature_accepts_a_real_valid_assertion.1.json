@@ -221,10 +221,25 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "get_owner"
+                "symbol": "verify_passkey_signature"
               }
             ],
-            "data": "void"
+            "data": {
+              "vec": [
+                {
+                  "bytes": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+                },
+                {
+                  "bytes": "7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a224b696f714b696f714b696f714b696f714b696f714b696f714b696f714b696f714b696f714b696f714b696f222c226f726967696e223a2268747470733a2f2f6578616d706c652e74657374227d"
+                },
+                {
+                  "bytes": "00000000000000000000000000000000000000000000000000000000000000000100000000"
+                },
+                {
+                  "bytes": "5b3f758fc989ca33a77e90ee4a3359dceace75346ad81ae6d188a24c32f6daba203c08c6936b7ce4727f94189492ae1e60e2415936bdc4a5f5b91cc2eb7d9bdf"
+                }
+              ]
+            }
           }
         }
       },
@@ -242,12 +257,10 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "get_owner"
+                "symbol": "verify_passkey_signature"
               }
             ],
-            "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-            }
+            "data": "void"
           }
         }
       },
