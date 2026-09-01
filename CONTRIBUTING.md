@@ -60,23 +60,23 @@ git remote add upstream https://github.com/stellar-gasless-net/soroban-gasless-c
 
 ```
 contracts/
-├── trusted-forwarder/            # Meta-Tx Forwarder (Domain Separator, Nonces, Batch calls)
+├── trusted-forwarder/            # Meta-Tx Forwarder (nonce replay guard, deadline check — no domain separator or batching yet)
 │   ├── src/lib.rs                # Main contract logic
 │   ├── src/errors.rs             # #[contracterror] enums
 │   └── src/test.rs               # Soroban Env unit tests
-├── token-paymaster/              # SAC Token Fee Sponsorship (USDC, EURC)
+├── token-paymaster/              # SAC Token Fee Sponsorship (flat fee — no swap/discount tiers yet)
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-├── voucher-paymaster/            # Promotional ECDSA & Merkle Coupon Sponsoring
+├── voucher-paymaster/            # Single-use voucher IDs (no Merkle proofs yet)
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-├── account-abstraction-wallet/   # Passkey Smart Account (WebAuthn, Session Keys)
+├── account-abstraction-wallet/   # Owner-controlled smart account (passkey key is stored but NOT yet verified on-chain — see README)
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-└── gas-estimator/                # Overhead & Gas Estimation Helper
+└── gas-estimator/                # Placeholder only — returns a hardcoded formula, not a real estimate
     └── src/lib.rs
 ```
 

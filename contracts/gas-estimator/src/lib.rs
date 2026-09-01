@@ -20,3 +20,6 @@ impl GasEstimatorContract {
         base_overhead + payload_size
     }
 }
+
+#[cfg(test)]
+mod test;

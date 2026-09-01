@@ -1,19 +1,15 @@
 # Security Policy
 
-## 🛡️ Reporting Vulnerabilities
+## Reporting Vulnerabilities
 
-Security is paramount for `stellar-gasless-net`. If you discover a potential security vulnerability within `soroban-gasless-contracts`, please **do NOT open a public GitHub issue**.
+If you discover a potential security vulnerability in `soroban-gasless-contracts`, please **do not open a public GitHub issue**.
 
-Instead, report the issue directly via email to:
+Instead, use GitHub's private vulnerability reporting for this repo: go to the **Security** tab → **Report a vulnerability**, or use this direct link:
+https://github.com/stellar-gasless-net/soroban-gasless-contracts/security/advisories/new
 
-📧 **security@stellar-gasless.net**
-
-### What to Include in Your Report:
-- Detailed steps to reproduce the vulnerability or exploit payload.
-- Affected smart contract (`trusted-forwarder`, `token-paymaster`, `account-abstraction-wallet`, etc.).
+### What to Include in Your Report
+- Detailed steps to reproduce the vulnerability.
+- Affected contract (`trusted-forwarder`, `token-paymaster`, `voucher-paymaster`, `account-abstraction-wallet`, or `gas-estimator`).
 - Impact assessment and potential severity.
 
-### Response SLA
-- **Initial Acknowledgment**: Within 24 hours.
-- **Triage & Status Update**: Within 72 hours.
-- **Bounty Eligibility**: Qualified security disclosures are eligible for ecosystem bug bounties.
+No formal response SLA or bug bounty program exists yet — this is a small, early-stage, unaudited project maintained by one person. Reports will be acknowledged as promptly as possible, but there's no guaranteed turnaround time to promise right now.

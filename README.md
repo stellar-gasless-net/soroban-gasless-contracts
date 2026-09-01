@@ -68,29 +68,32 @@ Our protocol leverages **Stellar Native Fee-Bump Transactions (`FeeBumpTransacti
 
 ---
 
-## Core Protocol Features & Innovations
+## Core Protocol Features — What's Actually Implemented
 
-### 1. Soroban WASM Trusted Forwarder (`trusted-forwarder`)
-* **EIP-712 Domain Separator**: Protects signatures against cross-chain and cross-contract replay attacks (`SorobanDomainSeparator`).
-* **Nonce Bitmap Tracking**: Prevents transaction reordering and replay attacks via sequence nonce bitmaps.
-* **Atomic Batch Execution**: Allows bundling multiple smart contract calls (`execute_batch`) into a single atomic transaction.
+This describes what each contract's code does *today*, verified against the source, not the original aspirational spec. Where a feature is planned but not built, it's called out explicitly instead of implied.
 
-### 2. SAC Token Paymaster & Promotional Vouchers (`token-paymaster`, `voucher-paymaster`)
-* **Auto USDC Fee Swap**: Deducts gas fees directly from the user's USDC balance using Stellar Asset Contracts (SAC), auto-converting to XLM.
-* **Merkle Proof Vouchers**: Verifies cryptographic promotional coupons off-chain, granting targeted users 100% free transactions funded by dApp marketing budgets.
+### 1. Trusted Forwarder (`trusted-forwarder`)
+* **Implemented**: sequential nonce replay guard, a deadline expiry check, single-call dispatch to a target contract via `env.invoke_contract`, and a `Forwarded` event.
+* **Not implemented yet**: no EIP-712-style domain separator (no chain/contract-bound signing domain), and no `execute_batch` — only one call per forwarded transaction, not atomic batches.
 
-### 3. Passkey Smart Accounts (`account-abstraction-wallet`)
-* **Native `secp256r1` Curve Verification**: Validates browser WebAuthn Passkeys natively inside Soroban WASM without third-party wallet extensions.
-* **Delegated Session Keys**: Issuance of temporary session keys with custom spending limits and expiration deadlines.
+### 2. Paymasters (`token-paymaster`, `voucher-paymaster`)
+* **`token-paymaster`, implemented**: a flat per-transaction fee charged in a single configured SAC token, transferred straight to the relayer treasury.
+* **`token-paymaster`, not implemented yet**: no USDC→XLM auto-swap, no dynamic/volume-based discount tiers (see open issues).
+* **`voucher-paymaster`, implemented**: single-use voucher IDs — the contract records a voucher ID as spent and rejects reuse.
+* **`voucher-paymaster`, not implemented yet**: no Merkle tree/proof verification — vouchers are simple IDs marked used, not cryptographic Merkle-inclusion coupons.
 
-### 4. Multi-Keypair Queue Rotation Engine (`stellar-gasless-relayer`)
-* **Race Condition Protection**: Rotates a pool of sponsoring keypairs (`GCRELAY_POOL_KEY_1`, `GCRELAY_POOL_KEY_2`) to prevent sequence number collisions during transaction bursts.
-* **Soroban RPC Pre-flight Simulation**: Dry-runs transactions against Horizon RPC (`https://horizon-testnet.stellar.org`) to reject failing calls before paying network fees.
+### 3. Smart Account Wallet (`account-abstraction-wallet`)
+* **Implemented**: an owner-controlled wallet that dispatches calls via `execute()`, plus a `SessionData` record (allowed contract + expiry) written by `add_session_key`.
+* **Not implemented yet, and this is the most important gap in the whole repo**: the contract stores a `passkey_pubkey` field but never verifies it against anything. There is no `secp256r1`/WebAuthn signature check anywhere in this contract, and no `CustomAccountInterface`/`__check_auth` implementation — auth is just the standard Soroban `Address.require_auth()` on the owner. Passkey signing isn't wired into on-chain auth yet. Session keys are stored but `execute()` doesn't check or enforce them (any call still requires the owner, not a session key).
 
-### 5. Protocol Console & Developer Portal (`gasless-relayer-dashboard`)
-* **Interactive Relay Simulator**: Live 3-step execution pipeline connected directly to Stellar Testnet Horizon RPC.
-* **API Key Gateway**: Create, restrict, and set rate-limit boundaries for dApp API keys.
-* **Live Code Snippet Generator**: Generates copy-paste TypeScript SDK code pre-populated with active production API keys.
+### 4. Gas Estimator (`gas-estimator`)
+* **Not implemented**: `estimate_execution_overhead` returns a hardcoded formula (`5000 + args.len() * 100`) and ignores the target contract and function entirely. It does not measure real Soroban resource usage. Treat this contract as a placeholder — see the Phase 2 roadmap below.
+
+### 5. Relayer Keypair Rotation (`stellar-gasless-relayer`)
+* **Implemented**: rotates through the configured `RELAYER_SECRETS` pool per request, and pre-flight simulates every inner transaction against Soroban RPC before sponsoring the fee.
+
+### 6. Console UI (`gasless-relayer-dashboard`)
+* **UI mockup only, no backend.** See that repo's README — the relayer it's designed to talk to isn't deployed anywhere.
 
 ---
 
@@ -102,8 +105,8 @@ import { GaslessClient } from '@stellar-gasless/sdk';
 
 // 1. Initialize Gasless Client
 const client = new GaslessClient({
-  relayerUrl: 'https://relayer.stellar-gasless.net',
-  dappApiKey: 'st_gas_live_e92a84b19f2a',
+  relayerUrl: 'https://your-relayer-domain.example', // your own deployed stellar-gasless-relayer
+  dappApiKey: 'YOUR_DAPP_API_KEY',
 });
 
 // 2. Submit signed Soroban authorization payload
@@ -125,24 +128,23 @@ const credential = await PasskeyAdapter.signChallenge(challengeHex);
 console.log('Biometric Passkey Credential ID:', credential.id);
 ```
 
-### Example 3: Use React Hook for 1-Line dApp Execution
+### Example 3: React Hook
 ```tsx
-import { useGaslessTransaction } from '@stellar-gasless/sdk/react';
+import { GaslessClient, useGaslessTransaction } from '@stellar-gasless/sdk';
 
-function GaslessMintButton() {
-  const { executeGaslessTx, loading, txHash } = useGaslessTransaction();
+const client = new GaslessClient({
+  relayerUrl: 'https://your-relayer-domain.example',
+  dappApiKey: 'YOUR_DAPP_API_KEY',
+});
 
-  const handleMint = async () => {
-    await executeGaslessTx({
-      contractId: 'CCFORWARDER_TRUSTED_CONTRACT_ID',
-      method: 'mint_nft',
-      params: [],
-    });
-  };
+// signedInnerTxXdr must already be built (e.g. via Contract.call()) and signed
+// by the user — there is no build+sign-in-one-call helper yet (see roadmap).
+function GaslessSubmitButton({ signedInnerTxXdr }: { signedInnerTxXdr: string }) {
+  const { submit, isSubmitting, txHash } = useGaslessTransaction(client);
 
   return (
-    <button onClick={handleMint} disabled={loading}>
-      {loading ? 'Sponsoring Gas...' : 'Mint NFT (0 XLM Gas)'}
+    <button onClick={() => submit(signedInnerTxXdr)} disabled={isSubmitting}>
+      {isSubmitting ? 'Submitting...' : 'Submit Gasless Tx'}
     </button>
   );
 }
@@ -190,20 +192,22 @@ Before contributing code or opening pull requests, please review our contributor
   └──────────────────────┘       └──────────────────────┘       └──────────────────────┘
 ```
 
-### Phase 1 (Completed & Audited)
-- [x] High-performance Soroban WASM Forwarder & SAC Token Paymaster contracts (`cargo test` verified).
-- [x] Multi-keypair account queue rotation in Relayer engine.
-- [x] WebAuthn Passkey TouchID/FaceID biometric signer adapter.
-- [x] Interactive Protocol Console with live Horizon RPC broadcast & SDK code generator.
+### Phase 1 (Built, unaudited)
+- [x] All 5 contracts compile with a passing `cargo test --all` (9 tests total). `trusted-forwarder`'s replay-guard and deadline-expiry logic and `gas-estimator`'s formula are directly tested; the paymaster/voucher/wallet contracts each have one initialization-level test — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
+- [x] Relayer engine with multi-keypair rotation and real Soroban RPC pre-flight simulation (see `stellar-gasless-relayer`).
+- [x] WebAuthn passkey signature request (browser-side only — see the "not implemented yet" note on `account-abstraction-wallet` above; the signature isn't verified on-chain yet).
+- [x] Console UI mockup (no backend — see `gasless-relayer-dashboard`).
 
-### Phase 2 (Upcoming Quarter Upgrades)
-- [ ] **Soroban Dynamic Gas Estimator Oracle**: Real-time gas price metering algorithm auto-adjusting fee caps based on Stellar ledger congestion.
+### Phase 2 (Upcoming)
+- [ ] **On-chain passkey verification**: wire `secp256r1`/WebAuthn signature checking into `account-abstraction-wallet`'s auth — currently the stored passkey key is unused.
+- [ ] **Soroban Gas Estimator**: replace the current hardcoded placeholder formula in `gas-estimator` with a real resource-usage measurement.
+- [ ] **Merkle-proof vouchers**: replace `voucher-paymaster`'s simple used-ID check with real Merkle inclusion proofs.
 - [ ] **Multi-Sig Paymaster Governance Vaults**: Multi-signature approval thresholds for depositing and withdrawing XLM gas reserves.
 - [ ] **React Native & Flutter Adapters**: Mobile SDK adapters supporting mobile WebAuthn passkey enclaves.
 
 ### Phase 3 (Ecosystem Scaling & Mainnet Expansion)
 - [ ] **Decentralized Bundler Node Network**: Peer-to-peer relayer node network incentivized via fee splits.
-- [ ] **Soroban Mainnet Deployment**: Mainnet release with audited security proof verification.
+- [ ] **Security audit**, then Soroban mainnet deployment. No audit has happened yet — this is explicitly a prerequisite, not a completed step.
 
 ---
 
