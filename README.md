@@ -97,6 +97,16 @@ This describes what each contract's code does *today*, verified against the sour
 
 ---
 
+## Deployment
+
+`scripts/deploy.sh` deploys all five contracts to Stellar testnet and wires up their real
+init arguments (a real generated demo passkey for the wallet, testnet's actual native XLM
+Stellar Asset Contract as the paymaster's fee token) — see
+[`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md). Once run, the resulting contract
+IDs land in `deployments/testnet.json`.
+
+---
+
 ## Integration & Usage Code Examples
 
 ### Example 1: Initialize Client SDK & Submit Meta-Transaction
