@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Bytes, BytesN, Env};
+use soroban_sdk::{crypto::Hash, testutils::Address as _, Address, Bytes, BytesN, Env};
 use p256::ecdsa::signature::hazmat::PrehashSigner;
 use p256::ecdsa::{Signature, SigningKey};
 
@@ -144,4 +144,72 @@ fn test_verify_passkey_signature_rejects_a_tampered_authenticator_data() {
         &tampered_authenticator_data,
         &signature,
     );
+}
+
+// __check_auth tests below call the CustomAccountInterface method directly — this is the
+// literal function the Soroban host invokes when something calls
+// `env.current_contract_address().require_auth()` inside execute(), not a re-implementation
+// or a mock. The host's own require_auth -> __check_auth dispatch is Soroban platform
+// infrastructure, not code this project wrote, so it isn't what needs testing here — this
+// function's actual verification logic is.
+
+#[test]
+fn test_check_auth_accepts_a_real_valid_passkey_signature() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, signing_key) = init_wallet(&env);
+
+    // Hash::from_bytes is private to soroban_sdk itself — the only legitimate way to get a
+    // real Hash<32> here is via env.crypto().sha256(), same as the host would produce one.
+    let seed = Bytes::from_array(&env, &[7u8; 32]);
+    let payload: Hash<32> = env.crypto().sha256(&seed);
+    let challenge_bytes = payload.to_array();
+
+    let (_challenge, client_data_json, authenticator_data, signature) =
+        build_assertion(&env, &signing_key, challenge_bytes);
+    let sig = PasskeySignature {
+        client_data_json,
+        authenticator_data,
+        signature,
+    };
+
+    // __check_auth reads instance storage (the stored passkey pubkey), which the host
+    // scopes to "whichever contract is currently executing" — calling it as a bare
+    // function needs that context set explicitly via as_contract, same as the host would
+    // when it dispatches a real require_auth() call to this contract.
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, Vec::new(&env))
+    });
+    assert!(result.is_ok(), "a genuine passkey signature over the real challenge should authorize");
+}
+
+#[test]
+fn test_check_auth_rejects_a_signature_over_a_different_payload() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, signing_key) = init_wallet(&env);
+
+    // Sign challenge A, but present it as authorization for a different payload B — this
+    // is exactly what execute() must prevent: a signature for one transaction being replayed
+    // to authorize a different one. This is caught by the challenge-embedding check (the
+    // signed challenge isn't in client_data_json for the *different* payload we're
+    // presenting), so it returns a clean Err rather than panicking inside secp256r1_verify.
+    let signed_seed = Bytes::from_array(&env, &[7u8; 32]);
+    let signed_payload: Hash<32> = env.crypto().sha256(&signed_seed);
+    let signed_challenge_bytes = signed_payload.to_array();
+    let (_challenge, client_data_json, authenticator_data, signature) =
+        build_assertion(&env, &signing_key, signed_challenge_bytes);
+
+    let different_seed = Bytes::from_array(&env, &[9u8; 32]);
+    let different_payload: Hash<32> = env.crypto().sha256(&different_seed);
+    let sig = PasskeySignature {
+        client_data_json,
+        authenticator_data,
+        signature,
+    };
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), different_payload, sig, Vec::new(&env))
+    });
+    assert!(result.is_err(), "a signature over a different payload must not authorize");
 }
