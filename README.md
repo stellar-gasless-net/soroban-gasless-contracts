@@ -99,11 +99,23 @@ This describes what each contract's code does *today*, verified against the sour
 
 ## Deployment
 
-`scripts/deploy.sh` deploys all five contracts to Stellar testnet and wires up their real
-init arguments (a real generated demo passkey for the wallet, testnet's actual native XLM
-Stellar Asset Contract as the paymaster's fee token) — see
-[`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md). Once run, the resulting contract
-IDs land in `deployments/testnet.json`.
+All five contracts are live on Stellar testnet (deployed 2026-09-03, see
+[`deployments/testnet.json`](deployments/testnet.json) — independently checkable on
+[stellar.expert](https://stellar.expert/explorer/testnet)):
+
+| Contract | Address |
+|---|---|
+| `trusted_forwarder` | `CBW2NKANV2HBRSPM5KMRUIKRFWTXO5RTOYWSAY3BHGYSRXNA7443LWUW` |
+| `token_paymaster` | `CAOWMY7YUKA4RNOA43SRFMFYDXRQNQB7EGVWHPTXRQEGK5UOMLZDCYPU` |
+| `voucher_paymaster` | `CDTJS33XDIX6B2VIGZGYM3SUY4OFOEU2KZKTCRE4GOFOIJCL5EXPVBHC` |
+| `gas_estimator` | `CB7LM3KHQS6W3EVYWYZDCH572OUP7YELJVF3UNHYAVXZNIGZO6DHT2O3` |
+| `account_abstraction_wallet` | `CBAGARDSUNYKGYKFBEEU7EZGLZCJWFAEOKIU7DUQE6E6IBH5TBOS6UUR` |
+
+`token_paymaster` is initialized against testnet's real native XLM Stellar Asset Contract
+(`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`), not a placeholder token.
+`account_abstraction_wallet` is initialized with a real generated secp256r1 demo passkey —
+see [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md) for what that means and how it
+was generated. `scripts/deploy.sh` reproduces all of this from scratch.
 
 ---
 
