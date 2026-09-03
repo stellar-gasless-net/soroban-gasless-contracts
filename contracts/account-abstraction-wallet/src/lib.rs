@@ -2,7 +2,7 @@
 use soroban_sdk::{
     auth::{Context, CustomAccountInterface},
     contract, contractimpl, contracttype, crypto::Hash, symbol_short, Address, Bytes, BytesN, Env,
-    Symbol, Vec, Val,
+    Symbol, TryFromVal, Vec, Val,
 };
 
 pub mod errors;
@@ -23,6 +23,16 @@ pub struct PasskeySignature {
     pub client_data_json: Bytes,
     pub authenticator_data: Bytes,
     pub signature: BytesN<64>,
+}
+
+/// `__check_auth`'s signature is one of two shapes: the owner's real WebAuthn passkey
+/// (full authority, whatever it's attached to), or a claim to be a specific session key
+/// (scoped authority, enforced against that key's registered `SessionData` below).
+#[contracttype]
+#[derive(Clone)]
+pub enum WalletSignature {
+    Owner(PasskeySignature),
+    Session(Address),
 }
 
 #[contract]
@@ -50,9 +60,10 @@ impl SmartAccountWalletContract {
         env.storage().instance().set(&symbol_short!("seq"), &0u64);
     }
 
-    /// Add temporary session key with specific contract whitelist & expiration.
-    /// Still owner-gated (admin/recovery key), not passkey-gated — session keys aren't
-    /// enforced anywhere yet (see README), this is unchanged scope for today.
+    /// Add temporary session key with specific contract whitelist & expiration. Still
+    /// owner-gated (admin/recovery key), not passkey-gated. Enforcement of the whitelist and
+    /// expiration happens in `__check_auth` below when a `WalletSignature::Session` claims
+    /// this key's authority.
     pub fn add_session_key(
         env: Env,
         session_key: Address,
@@ -141,46 +152,116 @@ impl SmartAccountWalletContract {
 
 #[contractimpl]
 impl CustomAccountInterface for SmartAccountWalletContract {
-    type Signature = PasskeySignature;
+    type Signature = WalletSignature;
     type Error = WalletError;
 
     /// Called automatically by the host whenever something calls
     /// `require_auth()`/`require_auth_for_args()` on this wallet's own address — see
     /// `execute()` above. `signature_payload` is the 32-byte digest the host derived from
-    /// the actual transaction; that digest is what the passkey must have signed, i.e. it's
-    /// used as the WebAuthn `challenge`.
+    /// the actual transaction; for the owner path that digest is what the passkey must have
+    /// signed, i.e. it's used as the WebAuthn `challenge`.
     ///
-    /// `auth_contexts` (which calls this authorization actually covers) isn't inspected
-    /// here — this wallet doesn't yet enforce per-call scoping (e.g. session-key contract
-    /// whitelists). A valid passkey signature currently authorizes whatever it's attached
-    /// to, same limitation already disclosed for session keys in the README.
+    /// `WalletSignature::Owner` grants full authority — same as before, and correctly so:
+    /// the host already binds `signature_payload` to the exact `auth_contexts` being
+    /// authorized, so a real owner signature can't be replayed against a different call.
+    /// `WalletSignature::Session` is new: it's scoped, so `auth_contexts` genuinely needs
+    /// inspecting here — a session key's own signature is real and host-verified via
+    /// `require_auth()` below, but that alone says nothing about whether this wallet is
+    /// willing to let *this particular* session key authorize *this particular* call.
     fn __check_auth(
         env: Env,
         signature_payload: Hash<32>,
-        signature: PasskeySignature,
-        _auth_contexts: Vec<Context>,
+        signature: WalletSignature,
+        auth_contexts: Vec<Context>,
     ) -> Result<(), WalletError> {
-        let challenge: BytesN<32> = signature_payload.to_bytes();
-        let digest = passkey_message_digest(
-            &env,
-            &challenge,
-            &signature.client_data_json,
-            &signature.authenticator_data,
-        )
-        .ok_or(WalletError::InvalidPasskeySignature)?;
+        match signature {
+            WalletSignature::Owner(passkey_sig) => {
+                let challenge: BytesN<32> = signature_payload.to_bytes();
+                let digest = passkey_message_digest(
+                    &env,
+                    &challenge,
+                    &passkey_sig.client_data_json,
+                    &passkey_sig.authenticator_data,
+                )
+                .ok_or(WalletError::InvalidPasskeySignature)?;
 
-        let passkey_pubkey: BytesN<65> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("passkey"))
-            .unwrap();
+                let passkey_pubkey: BytesN<65> = env
+                    .storage()
+                    .instance()
+                    .get(&symbol_short!("passkey"))
+                    .unwrap();
 
-        // Panics (host trap) on an invalid signature, same as verify_passkey_signature —
-        // that's still a valid failure signal to the host for a custom account auth check.
-        env.crypto()
-            .secp256r1_verify(&passkey_pubkey, &digest, &signature.signature);
-        Ok(())
+                // Panics (host trap) on an invalid signature, same as verify_passkey_signature —
+                // that's still a valid failure signal to the host for a custom account auth check.
+                env.crypto()
+                    .secp256r1_verify(&passkey_pubkey, &digest, &passkey_sig.signature);
+                Ok(())
+            }
+            WalletSignature::Session(session_key) => {
+                let key = (symbol_short!("sess"), session_key.clone());
+                let session_data: SessionData = env
+                    .storage()
+                    .persistent()
+                    .get(&key)
+                    .ok_or(WalletError::UnknownSessionKey)?;
+
+                if env.ledger().timestamp() > session_data.expires_at {
+                    return Err(WalletError::SessionExpired);
+                }
+
+                check_session_scope(&env, &session_data.allowed_contract, &auth_contexts)?;
+
+                // The session key is a real Stellar address with its own signing key; this
+                // asks the host to verify ITS signature was genuinely provided for this same
+                // transaction, exactly like any other multi-party Soroban authorization —
+                // no bespoke signature-verification code needed for the session key itself.
+                session_key.require_auth();
+                Ok(())
+            }
+        }
     }
+}
+
+/// Enforces that every authorization context a session key is being used for actually
+/// targets `allowed_contract`. This wallet only ever calls `require_auth()` on its own
+/// address from inside `execute()`, so the *only* context that can appear here with
+/// `contract == this wallet` is that root `execute` call — and since `execute`'s own args
+/// are `(target, function, args)`, that's where the real destination has to be read from,
+/// not from `ctx.contract` (which is this wallet, not the target). Any other context
+/// (e.g. a downstream call that itself needs this wallet's authorization, like a token
+/// `transfer` where `from` is this wallet) is checked directly against `allowed_contract`.
+fn check_session_scope(
+    env: &Env,
+    allowed_contract: &Address,
+    auth_contexts: &Vec<Context>,
+) -> Result<(), WalletError> {
+    let this_wallet = env.current_contract_address();
+    for context in auth_contexts.iter() {
+        match context {
+            Context::Contract(ctx) => {
+                if ctx.contract == this_wallet {
+                    if ctx.fn_name != symbol_short!("execute") {
+                        return Err(WalletError::ContractNotWhitelisted);
+                    }
+                    let target_val = ctx
+                        .args
+                        .get(0)
+                        .ok_or(WalletError::ContractNotWhitelisted)?;
+                    let target = Address::try_from_val(env, &target_val)
+                        .map_err(|_| WalletError::ContractNotWhitelisted)?;
+                    if &target != allowed_contract {
+                        return Err(WalletError::ContractNotWhitelisted);
+                    }
+                } else if &ctx.contract != allowed_contract {
+                    return Err(WalletError::ContractNotWhitelisted);
+                }
+            }
+            Context::CreateContractHostFn(_) => {
+                return Err(WalletError::ContractNotWhitelisted);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Shared core of WebAuthn signature verification, used by both

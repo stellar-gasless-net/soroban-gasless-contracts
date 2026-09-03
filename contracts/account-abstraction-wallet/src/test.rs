@@ -1,7 +1,11 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{crypto::Hash, testutils::Address as _, Address, Bytes, BytesN, Env};
+use soroban_sdk::{
+    auth::ContractContext, crypto::Hash,
+    testutils::{Address as _, Ledger as _},
+    Address, Bytes, BytesN, Env, Symbol, Val, Vec,
+};
 use p256::ecdsa::signature::hazmat::PrehashSigner;
 use p256::ecdsa::{Signature, SigningKey};
 
@@ -167,11 +171,11 @@ fn test_check_auth_accepts_a_real_valid_passkey_signature() {
 
     let (_challenge, client_data_json, authenticator_data, signature) =
         build_assertion(&env, &signing_key, challenge_bytes);
-    let sig = PasskeySignature {
+    let sig = WalletSignature::Owner(PasskeySignature {
         client_data_json,
         authenticator_data,
         signature,
-    };
+    });
 
     // __check_auth reads instance storage (the stored passkey pubkey), which the host
     // scopes to "whichever contract is currently executing" — calling it as a bare
@@ -202,14 +206,122 @@ fn test_check_auth_rejects_a_signature_over_a_different_payload() {
 
     let different_seed = Bytes::from_array(&env, &[9u8; 32]);
     let different_payload: Hash<32> = env.crypto().sha256(&different_seed);
-    let sig = PasskeySignature {
+    let sig = WalletSignature::Owner(PasskeySignature {
         client_data_json,
         authenticator_data,
         signature,
-    };
+    });
 
     let result = env.as_contract(&client.address, || {
         SmartAccountWalletContract::__check_auth(env.clone(), different_payload, sig, Vec::new(&env))
     });
     assert!(result.is_err(), "a signature over a different payload must not authorize");
+}
+
+// Session-key tests below exercise the real scoping enforcement in `check_session_scope`,
+// not a mock of it — they call `__check_auth` directly with the exact `Context` shapes the
+// host would build for a real `execute()` call, same principle as the owner-passkey tests
+// above using a real signed WebAuthn-shaped assertion instead of a stand-in.
+
+fn add_dapp_session_key(env: &Env, client: &SmartAccountWalletContractClient) -> (Address, Address) {
+    let session_key = Address::generate(env);
+    let dapp_contract = Address::generate(env);
+    client.add_session_key(&session_key, &dapp_contract, &10_000u64);
+    (session_key, dapp_contract)
+}
+
+fn execute_context(env: &Env, wallet: &Address, target: &Address) -> Vec<Context> {
+    let args: Vec<Val> = Vec::from_array(
+        env,
+        [
+            target.to_val(),
+            Symbol::new(env, "noop").to_val(),
+            Vec::<Val>::new(env).to_val(),
+        ],
+    );
+    Vec::from_array(
+        env,
+        [Context::Contract(ContractContext {
+            contract: wallet.clone(),
+            fn_name: Symbol::new(env, "execute"),
+            args,
+        })],
+    )
+}
+
+#[test]
+fn test_check_auth_accepts_a_session_key_calling_its_allowed_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let (session_key, dapp_contract) = add_dapp_session_key(&env, &client);
+
+    let contexts = execute_context(&env, &client.address, &dapp_contract);
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(session_key);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(result.is_ok(), "a session key calling its own allowed contract must authorize");
+}
+
+#[test]
+fn test_check_auth_rejects_a_session_key_calling_a_different_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let (session_key, _dapp_contract) = add_dapp_session_key(&env, &client);
+    let some_other_contract = Address::generate(&env);
+
+    let contexts = execute_context(&env, &client.address, &some_other_contract);
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(session_key);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(
+        result.is_err(),
+        "a session key must not authorize a call to a contract outside its whitelist, even with a real host-verified signature"
+    );
+}
+
+#[test]
+fn test_check_auth_rejects_an_expired_session_key() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let session_key = Address::generate(&env);
+    let dapp_contract = Address::generate(&env);
+    // expires_at = 0: any ledger timestamp at or past genesis is already expired.
+    client.add_session_key(&session_key, &dapp_contract, &0u64);
+    env.ledger().set_timestamp(1);
+
+    let contexts = execute_context(&env, &client.address, &dapp_contract);
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(session_key);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(result.is_err(), "an expired session key must not authorize anything");
+}
+
+#[test]
+fn test_check_auth_rejects_an_unregistered_session_key() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let stranger = Address::generate(&env);
+    let dapp_contract = Address::generate(&env);
+
+    let contexts = execute_context(&env, &client.address, &dapp_contract);
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(stranger);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(result.is_err(), "an address with no registered session key must not authorize anything");
 }

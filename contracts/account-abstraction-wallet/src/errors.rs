@@ -9,4 +9,5 @@ pub enum WalletError {
     SessionExpired = 3,
     ContractNotWhitelisted = 4,
     InvalidPasskeySignature = 5,
+    UnknownSessionKey = 6,
 }
