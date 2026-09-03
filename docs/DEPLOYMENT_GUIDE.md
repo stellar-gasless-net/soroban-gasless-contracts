@@ -7,8 +7,9 @@ deployment doesn't substitute for that.
 
 ## Prerequisites
 - **Stellar CLI**: `cargo install --locked stellar-cli`
-- **Rust Wasm target**: `rustup target add wasm32-unknown-unknown` (this repo is on
-  soroban-sdk 21.x, which predates the `wasm32v1-none` target used elsewhere in this org)
+- **Rust Wasm target**: `rustup target add wasm32v1-none` — a plain `wasm32-unknown-unknown`
+  build with a modern rustc emits non-MVP wasm encoding that this repo's soroban-sdk 21.x-era
+  host rejects at deploy time; `wasm32v1-none` forces MVP-compatible output
 - **OpenSSL** (to generate the demo passkey below)
 
 ## Network

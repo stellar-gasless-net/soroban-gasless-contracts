@@ -25,17 +25,24 @@ fi
 
 echo "Deploying soroban-gasless-contracts to Stellar $NETWORK..."
 
-if ! stellar keys ls | grep -q "^deployer$"; then
+if ! stellar keys address deployer >/dev/null 2>&1; then
   echo "Generating deployer key..."
-  stellar keys generate deployer --global
+  stellar keys generate deployer
 fi
 stellar keys fund deployer --network "$NETWORK" || true
 DEPLOYER_ADDR=$(stellar keys address deployer)
 
 cd "$REPO_ROOT"
-cargo build --release --target wasm32-unknown-unknown
+# wasm32-unknown-unknown with a modern rustc emits non-MVP wasm encoding (post-MVP
+# call_indirect table-index encoding) that this repo's soroban-sdk 21.x-era host rejects at
+# simulation time with "reference-types not enabled: zero byte expected" — a real toolchain
+# drift bug, not something `cargo build` or `cargo test` can catch (neither ever runs the
+# compiled wasm through an actual Soroban host validator). wasm32v1-none is defined as
+# wasm32-unknown-unknown plus `-C target-cpu=mvp -C target-feature=+mutable-globals`, which
+# forces the MVP-compatible encoding this host expects.
+cargo build --release --target wasm32v1-none
 
-WASM_DIR="target/wasm32-unknown-unknown/release"
+WASM_DIR="target/wasm32v1-none/release"
 
 deploy() {
   local wasm_name="$1"
