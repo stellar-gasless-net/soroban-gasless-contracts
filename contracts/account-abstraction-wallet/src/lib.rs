@@ -12,6 +12,23 @@ use errors::WalletError;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionData {
     pub allowed_contract: Address,
+    /// The exact functions on `allowed_contract` this key may call — e.g. `swap` but not
+    /// `withdraw_all` on the same DEX contract. Previously any function on the whitelisted
+    /// contract was allowed once the contract itself matched; this is what actually narrows
+    /// that down.
+    pub allowed_functions: Vec<Symbol>,
+    /// Cumulative cap, in the token's own base units, this key may move via SEP-41
+    /// `transfer`/`transfer_from` calls on `allowed_contract` — `None` means no cap. Soroban
+    /// has no standard "amount" argument position for arbitrary functions, so cap
+    /// enforcement is deliberately scoped to the one universal convention every real
+    /// Stellar asset actually follows (SEP-41's `transfer(from, to, amount)` and
+    /// `transfer_from(spender, from, to, amount)`, not guessed at for arbitrary calls.
+    pub spend_cap: Option<i128>,
+    /// Running total already moved under `spend_cap`, updated on every SEP-41
+    /// transfer/transfer_from this key authorizes. Resets to 0 whenever `add_session_key`
+    /// re-registers this key, the same way `allowed_contract`/`expires_at` are fully
+    /// replaced rather than merged — re-authorizing a key is the owner's deliberate act.
+    pub spent: i128,
     pub expires_at: u64,
 }
 
@@ -60,14 +77,16 @@ impl SmartAccountWalletContract {
         env.storage().instance().set(&symbol_short!("seq"), &0u64);
     }
 
-    /// Add temporary session key with specific contract whitelist & expiration. Still
-    /// owner-gated (admin/recovery key), not passkey-gated. Enforcement of the whitelist and
-    /// expiration happens in `__check_auth` below when a `WalletSignature::Session` claims
-    /// this key's authority.
+    /// Add temporary session key with a specific contract + per-function whitelist, an
+    /// optional cumulative SEP-41 spend cap, and an expiration. Still owner-gated
+    /// (admin/recovery key), not passkey-gated. Enforcement of all of this happens in
+    /// `__check_auth` below when a `WalletSignature::Session` claims this key's authority.
     pub fn add_session_key(
         env: Env,
         session_key: Address,
         allowed_contract: Address,
+        allowed_functions: Vec<Symbol>,
+        spend_cap: Option<i128>,
         expires_at: u64,
     ) {
         let owner: Address = env.storage().instance().get(&symbol_short!("owner")).unwrap();
@@ -75,6 +94,9 @@ impl SmartAccountWalletContract {
 
         let session_data = SessionData {
             allowed_contract: allowed_contract.clone(),
+            allowed_functions: allowed_functions.clone(),
+            spend_cap,
+            spent: 0,
             expires_at,
         };
 
@@ -83,7 +105,7 @@ impl SmartAccountWalletContract {
 
         env.events().publish(
             (symbol_short!("sess_add"), session_key),
-            (allowed_contract, expires_at),
+            (allowed_contract, allowed_functions, spend_cap, expires_at),
         );
     }
 
@@ -209,7 +231,7 @@ impl CustomAccountInterface for SmartAccountWalletContract {
                     return Err(WalletError::SessionExpired);
                 }
 
-                check_session_scope(&env, &session_data.allowed_contract, &auth_contexts)?;
+                check_session_scope(&env, &session_key, &session_data, &auth_contexts)?;
 
                 // The session key is a real Stellar address with its own signing key; this
                 // asks the host to verify ITS signature was genuinely provided for this same
@@ -223,19 +245,25 @@ impl CustomAccountInterface for SmartAccountWalletContract {
 }
 
 /// Enforces that every authorization context a session key is being used for actually
-/// targets `allowed_contract`. This wallet only ever calls `require_auth()` on its own
-/// address from inside `execute()`, so the *only* context that can appear here with
-/// `contract == this wallet` is that root `execute` call — and since `execute`'s own args
-/// are `(target, function, args)`, that's where the real destination has to be read from,
-/// not from `ctx.contract` (which is this wallet, not the target). Any other context
-/// (e.g. a downstream call that itself needs this wallet's authorization, like a token
-/// `transfer` where `from` is this wallet) is checked directly against `allowed_contract`.
+/// targets `allowed_contract`, calls one of `allowed_functions`, and — if a `spend_cap` is
+/// set — doesn't push cumulative SEP-41 transfers past it. This wallet only ever calls
+/// `require_auth()` on its own address from inside `execute()`, so the *only* context that
+/// can appear here with `contract == this wallet` is that root `execute` call — and since
+/// `execute`'s own args are `(target, function, args)`, that's where the real destination
+/// and function have to be read from, not from `ctx.contract`/`ctx.fn_name` (which describe
+/// the call to `execute()` itself, not the call `execute()` makes). Any other context (e.g.
+/// a downstream call that itself needs this wallet's authorization, like a token `transfer`
+/// where `from` is this wallet) is checked directly: its own `ctx.contract`/`ctx.fn_name`
+/// really are the target contract and function in that case.
 fn check_session_scope(
     env: &Env,
-    allowed_contract: &Address,
+    session_key: &Address,
+    session_data: &SessionData,
     auth_contexts: &Vec<Context>,
 ) -> Result<(), WalletError> {
     let this_wallet = env.current_contract_address();
+    let mut new_spent = session_data.spent;
+
     for context in auth_contexts.iter() {
         match context {
             Context::Contract(ctx) => {
@@ -249,11 +277,36 @@ fn check_session_scope(
                         .ok_or(WalletError::ContractNotWhitelisted)?;
                     let target = Address::try_from_val(env, &target_val)
                         .map_err(|_| WalletError::ContractNotWhitelisted)?;
-                    if &target != allowed_contract {
+                    if &target != &session_data.allowed_contract {
                         return Err(WalletError::ContractNotWhitelisted);
                     }
-                } else if &ctx.contract != allowed_contract {
-                    return Err(WalletError::ContractNotWhitelisted);
+
+                    let function_val = ctx
+                        .args
+                        .get(1)
+                        .ok_or(WalletError::FunctionNotWhitelisted)?;
+                    let function = Symbol::try_from_val(env, &function_val)
+                        .map_err(|_| WalletError::FunctionNotWhitelisted)?;
+                    if !session_data.allowed_functions.contains(&function) {
+                        return Err(WalletError::FunctionNotWhitelisted);
+                    }
+                } else {
+                    if &ctx.contract != &session_data.allowed_contract {
+                        return Err(WalletError::ContractNotWhitelisted);
+                    }
+                    if !session_data.allowed_functions.contains(&ctx.fn_name) {
+                        return Err(WalletError::FunctionNotWhitelisted);
+                    }
+                    if let Some(cap) = session_data.spend_cap {
+                        if let Some(amount) = sep41_transfer_amount(env, &ctx.fn_name, &ctx.args) {
+                            new_spent = new_spent
+                                .checked_add(amount)
+                                .ok_or(WalletError::SpendCapExceeded)?;
+                            if new_spent > cap {
+                                return Err(WalletError::SpendCapExceeded);
+                            }
+                        }
+                    }
                 }
             }
             Context::CreateContractHostFn(_) => {
@@ -261,7 +314,31 @@ fn check_session_scope(
             }
         }
     }
+
+    if new_spent != session_data.spent {
+        let mut updated = session_data.clone();
+        updated.spent = new_spent;
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("sess"), session_key.clone()), &updated);
+    }
+
     Ok(())
+}
+
+/// Extracts the amount from a call that matches SEP-41's fixed `transfer(from, to, amount)`
+/// or `transfer_from(spender, from, to, amount)` shape — the one argument-position
+/// convention every real Stellar asset actually follows, not a guess. Returns `None` for
+/// any other function, including one that merely happens to also be named `transfer` on a
+/// non-token contract with a different signature — `args.len()` has to match too.
+fn sep41_transfer_amount(env: &Env, fn_name: &Symbol, args: &Vec<Val>) -> Option<i128> {
+    if *fn_name == symbol_short!("transfer") && args.len() == 3 {
+        args.get(2).and_then(|v| i128::try_from_val(env, &v).ok())
+    } else if *fn_name == Symbol::new(env, "transfer_from") && args.len() == 4 {
+        args.get(3).and_then(|v| i128::try_from_val(env, &v).ok())
+    } else {
+        None
+    }
 }
 
 /// Shared core of WebAuthn signature verification, used by both

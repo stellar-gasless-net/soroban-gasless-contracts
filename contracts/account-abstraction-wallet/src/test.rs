@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::{
     auth::ContractContext, crypto::Hash,
     testutils::{Address as _, Ledger as _},
-    Address, Bytes, BytesN, Env, Symbol, Val, Vec,
+    Address, Bytes, BytesN, Env, IntoVal, Symbol, Val, Vec,
 };
 use p256::ecdsa::signature::hazmat::PrehashSigner;
 use p256::ecdsa::{Signature, SigningKey};
@@ -226,17 +226,28 @@ fn test_check_auth_rejects_a_signature_over_a_different_payload() {
 fn add_dapp_session_key(env: &Env, client: &SmartAccountWalletContractClient) -> (Address, Address) {
     let session_key = Address::generate(env);
     let dapp_contract = Address::generate(env);
-    client.add_session_key(&session_key, &dapp_contract, &10_000u64);
+    let allowed_functions: Vec<Symbol> = Vec::from_array(env, [Symbol::new(env, "noop")]);
+    client.add_session_key(&session_key, &dapp_contract, &allowed_functions, &None, &10_000u64);
     (session_key, dapp_contract)
 }
 
 fn execute_context(env: &Env, wallet: &Address, target: &Address) -> Vec<Context> {
+    execute_context_fn(env, wallet, target, "noop", Vec::new(env))
+}
+
+fn execute_context_fn(
+    env: &Env,
+    wallet: &Address,
+    target: &Address,
+    function: &str,
+    call_args: Vec<Val>,
+) -> Vec<Context> {
     let args: Vec<Val> = Vec::from_array(
         env,
         [
             target.to_val(),
-            Symbol::new(env, "noop").to_val(),
-            Vec::<Val>::new(env).to_val(),
+            Symbol::new(env, function).to_val(),
+            call_args.to_val(),
         ],
     );
     Vec::from_array(
@@ -244,6 +255,22 @@ fn execute_context(env: &Env, wallet: &Address, target: &Address) -> Vec<Context
         [Context::Contract(ContractContext {
             contract: wallet.clone(),
             fn_name: Symbol::new(env, "execute"),
+            args,
+        })],
+    )
+}
+
+/// Builds the auth-context tree for a session key authorizing a SEP-41 `transfer` directly
+/// on the target token — i.e. `transfer`'s own require_auth() on `from`, not routed through
+/// this wallet's `execute()`. This is the shape a real token transfer's authorization tree
+/// actually takes: the nested Context::Contract node IS the transfer call itself.
+fn transfer_context(env: &Env, token: &Address, from: &Address, to: &Address, amount: i128) -> Vec<Context> {
+    let args: Vec<Val> = Vec::from_array(env, [from.to_val(), to.to_val(), amount.into_val(env)]);
+    Vec::from_array(
+        env,
+        [Context::Contract(ContractContext {
+            contract: token.clone(),
+            fn_name: Symbol::new(env, "transfer"),
             args,
         })],
     )
@@ -294,8 +321,9 @@ fn test_check_auth_rejects_an_expired_session_key() {
     let (client, _signing_key) = init_wallet(&env);
     let session_key = Address::generate(&env);
     let dapp_contract = Address::generate(&env);
+    let allowed_functions: Vec<Symbol> = Vec::from_array(&env, [Symbol::new(&env, "noop")]);
     // expires_at = 0: any ledger timestamp at or past genesis is already expired.
-    client.add_session_key(&session_key, &dapp_contract, &0u64);
+    client.add_session_key(&session_key, &dapp_contract, &allowed_functions, &None, &0u64);
     env.ledger().set_timestamp(1);
 
     let contexts = execute_context(&env, &client.address, &dapp_contract);
@@ -324,4 +352,141 @@ fn test_check_auth_rejects_an_unregistered_session_key() {
         SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
     });
     assert!(result.is_err(), "an address with no registered session key must not authorize anything");
+}
+
+// Per-function allowlist tests below exercise real scoping narrower than just the target
+// contract — a session key approved for one function on a contract must not be usable for
+// a different function on that SAME, otherwise-whitelisted contract.
+
+#[test]
+fn test_check_auth_accepts_a_session_key_calling_an_allowed_function() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let session_key = Address::generate(&env);
+    let dapp_contract = Address::generate(&env);
+    let allowed_functions: Vec<Symbol> = Vec::from_array(&env, [Symbol::new(&env, "swap")]);
+    client.add_session_key(&session_key, &dapp_contract, &allowed_functions, &None, &10_000u64);
+
+    let contexts = execute_context_fn(&env, &client.address, &dapp_contract, "swap", Vec::new(&env));
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(session_key);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(result.is_ok(), "a session key calling a function it's explicitly allowed must authorize");
+}
+
+#[test]
+fn test_check_auth_rejects_a_session_key_calling_a_non_whitelisted_function_on_an_allowed_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let session_key = Address::generate(&env);
+    let dapp_contract = Address::generate(&env);
+    // Approved for `swap` only — must not be usable for `withdraw_all` on the same contract.
+    let allowed_functions: Vec<Symbol> = Vec::from_array(&env, [Symbol::new(&env, "swap")]);
+    client.add_session_key(&session_key, &dapp_contract, &allowed_functions, &None, &10_000u64);
+
+    let contexts = execute_context_fn(&env, &client.address, &dapp_contract, "withdraw_all", Vec::new(&env));
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(session_key);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(
+        result.is_err(),
+        "a session key must not authorize a function outside its per-function allowlist, even on an otherwise-allowed contract"
+    );
+}
+
+// Spend cap tests below exercise real cumulative tracking against SEP-41 transfer/transfer_from
+// calls made directly on the allowed contract (not routed through execute()) — the shape a
+// real token transfer's own authorization actually takes.
+
+#[test]
+fn test_check_auth_accepts_a_transfer_under_the_spend_cap_and_records_it() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let session_key = Address::generate(&env);
+    let token = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let allowed_functions: Vec<Symbol> = Vec::from_array(&env, [Symbol::new(&env, "transfer")]);
+    client.add_session_key(&session_key, &token, &allowed_functions, &Some(1_000i128), &10_000u64);
+
+    let contexts = transfer_context(&env, &token, &client.address, &recipient, 400i128);
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(session_key);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(result.is_ok(), "a transfer within the spend cap must authorize");
+}
+
+#[test]
+fn test_check_auth_rejects_a_transfer_that_would_exceed_the_spend_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let session_key = Address::generate(&env);
+    let token = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let allowed_functions: Vec<Symbol> = Vec::from_array(&env, [Symbol::new(&env, "transfer")]);
+    client.add_session_key(&session_key, &token, &allowed_functions, &Some(1_000i128), &10_000u64);
+
+    let contexts = transfer_context(&env, &token, &client.address, &recipient, 1_001i128);
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let sig = WalletSignature::Session(session_key);
+
+    let result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(env.clone(), payload, sig, contexts)
+    });
+    assert!(result.is_err(), "a single transfer over the cap must not authorize");
+}
+
+#[test]
+fn test_check_auth_rejects_a_second_transfer_once_cumulative_spend_would_exceed_the_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let session_key = Address::generate(&env);
+    let token = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let allowed_functions: Vec<Symbol> = Vec::from_array(&env, [Symbol::new(&env, "transfer")]);
+    client.add_session_key(&session_key, &token, &allowed_functions, &Some(1_000i128), &10_000u64);
+
+    // First transfer of 700 is under the cap on its own and must succeed, leaving 300 of
+    // headroom — this also proves `spent` actually persists across separate __check_auth
+    // calls, not just within one.
+    let first_contexts = transfer_context(&env, &token, &client.address, &recipient, 700i128);
+    let payload: Hash<32> = env.crypto().sha256(&Bytes::from_array(&env, &[1u8; 32]));
+    let first_result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(
+            env.clone(),
+            payload.clone(),
+            WalletSignature::Session(session_key.clone()),
+            first_contexts,
+        )
+    });
+    assert!(first_result.is_ok(), "the first transfer, alone under the cap, must authorize");
+
+    // Second transfer of 400 would bring the cumulative total to 1,100 — over the 1,000 cap —
+    // even though 400 alone is well under it.
+    let second_contexts = transfer_context(&env, &token, &client.address, &recipient, 400i128);
+    let second_result = env.as_contract(&client.address, || {
+        SmartAccountWalletContract::__check_auth(
+            env.clone(),
+            payload,
+            WalletSignature::Session(session_key),
+            second_contexts,
+        )
+    });
+    assert!(
+        second_result.is_err(),
+        "cumulative spend across separate authorizations must still be capped, not reset per call"
+    );
 }

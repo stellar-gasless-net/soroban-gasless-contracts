@@ -10,4 +10,6 @@ pub enum WalletError {
     ContractNotWhitelisted = 4,
     InvalidPasskeySignature = 5,
     UnknownSessionKey = 6,
+    FunctionNotWhitelisted = 7,
+    SpendCapExceeded = 8,
 }

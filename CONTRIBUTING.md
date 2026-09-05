@@ -76,7 +76,7 @@ contracts/
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-└── account-abstraction-wallet/   # Real on-chain secp256r1 passkey verification + enforced session-key scoping (per-contract only, no per-function caps yet — see README)
+└── account-abstraction-wallet/   # Real on-chain secp256r1 passkey verification + per-function session-key scoping with an optional SEP-41 spend cap
     ├── src/lib.rs
     ├── src/errors.rs
     └── src/test.rs
