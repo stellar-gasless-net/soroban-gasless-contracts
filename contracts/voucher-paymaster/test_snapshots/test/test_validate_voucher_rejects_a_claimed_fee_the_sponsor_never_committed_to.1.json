@@ -42,6 +42,9 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
+                  "u32": 1
+                },
+                {
                   "u64": 1001
                 },
                 {
@@ -88,10 +91,58 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "SponsorLatestVersion"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "SponsorLatestVersion"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u32": 1
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "SponsorRoot"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 1
                 }
               ]
             },
@@ -112,6 +163,9 @@
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    },
+                    {
+                      "u32": 1
                     }
                   ]
                 },
@@ -297,7 +351,14 @@
               }
             ],
             "data": {
-              "bytes": "65592dba25d5a75d890d70952eea052a069c3b06e5b8d767bba442736ec118a0"
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "bytes": "65592dba25d5a75d890d70952eea052a069c3b06e5b8d767bba442736ec118a0"
+                }
+              ]
             }
           }
         }
@@ -319,7 +380,9 @@
                 "symbol": "register_voucher_batch"
               }
             ],
-            "data": "void"
+            "data": {
+              "u32": 1
+            }
           }
         }
       },
@@ -350,6 +413,9 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 1
                 },
                 {
                   "u64": 1001

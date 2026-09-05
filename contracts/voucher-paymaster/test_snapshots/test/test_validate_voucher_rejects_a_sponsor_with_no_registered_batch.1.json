@@ -99,6 +99,9 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
+                  "u32": 1
+                },
+                {
                   "u64": 1001
                 },
                 {
@@ -135,13 +138,16 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'sponsor has no registered voucher batch' from contract function 'Symbol(obj#11)'"
+                  "string": "caught panic 'sponsor has no registered voucher batch with this version' from contract function 'Symbol(obj#11)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 1
                 },
                 {
                   "u64": 1001
@@ -222,6 +228,9 @@
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    },
+                    {
+                      "u32": 1
                     },
                     {
                       "u64": 1001
