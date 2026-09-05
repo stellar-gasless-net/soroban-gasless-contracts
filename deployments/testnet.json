@@ -6,12 +6,12 @@
   "contracts": {
     "trusted_forwarder": "CBW2NKANV2HBRSPM5KMRUIKRFWTXO5RTOYWSAY3BHGYSRXNA7443LWUW",
     "token_paymaster": "CAOWMY7YUKA4RNOA43SRFMFYDXRQNQB7EGVWHPTXRQEGK5UOMLZDCYPU",
-    "voucher_paymaster": "CDML6MSVUF7ZDZIZEZQU7Y65KBJAEZ7TYYPL2CNZLYKBZIEK7XVG5J6Z",
+    "voucher_paymaster": "CBDBUQMTLZMXSLHC7I3OJWH7CENHGTCYTUB6FUUOJSYNWSS5ED2T4JZS",
     "gas_estimator": "CB7LM3KHQS6W3EVYWYZDCH572OUP7YELJVF3UNHYAVXZNIGZO6DHT2O3",
     "account_abstraction_wallet": "CC42GVJVXHEWXHPL3H2CTBXVKKRJ6RMT7N7UZYRFLYRK4ONH5INGJGT5"
   },
   "notes": {
     "account_abstraction_wallet": "Initialized with a demo secp256r1 passkey (DEMO_PASSKEY_PUBKEY), not a real WebAuthn authenticator. Redeployed 2026-09-03 after adding real session-key scoping — CBAGAR...S6UUR was the pre-fix instance and is stale.",
-    "voucher_paymaster": "Redeployed 2026-09-03 after switching to real Merkle-inclusion verification (register_voucher_batch + a proof-based validate_voucher) — CDTJS3...VBHC was the pre-fix instance and is stale. No voucher batch is registered yet; register_voucher_batch must be called by a real sponsor before any voucher can be redeemed."
+    "voucher_paymaster": "Redeployed 2026-09-05T10:09:14Z after fixing sponsor-scoping (Used key now keyed by (sponsor, voucher_id), not voucher_id alone) and adding user.require_auth() to close a front-running/griefing hole in validate_voucher() — CDML6MSVUF7ZDZIZEZQU7Y65KBJAEZ7TYYPL2CNZLYKBZIEK7XVG5J6Z was the pre-fix instance and is stale. No voucher batch is registered yet on this new instance; register_voucher_batch must be called by a real sponsor before any voucher can be redeemed."
   }
 }
