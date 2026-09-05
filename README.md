@@ -215,15 +215,17 @@ Before contributing code or opening pull requests, please review our contributor
 ```
 
 ### Phase 1 (Built, unaudited)
-- [x] All 5 contracts compile with a passing `cargo test --all` (21 tests total). `trusted-forwarder`'s replay-guard and deadline-expiry logic, `gas-estimator`'s formula, `account-abstraction-wallet`'s passkey auth and session-key scoping, and `voucher-paymaster`'s Merkle-coupon verification are all directly tested; `token-paymaster` has one initialization-level test — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
+- [x] All 5 contracts compile with a passing `cargo test --all` (26 tests total). `trusted-forwarder`'s replay-guard and deadline-expiry logic, `account-abstraction-wallet`'s passkey auth and session-key scoping, `voucher-paymaster`'s Merkle-coupon verification (including a real front-running fix and per-sponsor scoping), and `token-paymaster`'s fee-charging and reserve-withdrawal are all directly tested — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
 - [x] Relayer engine with multi-keypair rotation and real Soroban RPC pre-flight simulation (see `stellar-gasless-relayer`).
 - [x] WebAuthn passkey authentication, wired end to end: browser signature request (SDK) → on-chain secp256r1 verification → actually gates `execute()` via `CustomAccountInterface`/`__check_auth`, not just a standalone verifier — see `account-abstraction-wallet` above.
+- [x] Session-key scoping, enforced for real: `__check_auth` inspects `auth_contexts` and confirms every call a session key is used for targets that key's one whitelisted contract — see `account-abstraction-wallet` above for exactly what this does and doesn't cover yet.
+- [x] Real Merkle-inclusion voucher redemption, replacing the old opaque-ID design — see `voucher-paymaster` above.
 - [x] Console UI mockup (no backend — see `gasless-relayer-dashboard`).
 
 ### Phase 2 (Upcoming)
-- [ ] **Per-call auth scoping**: `__check_auth` doesn't inspect `auth_contexts` yet, so a valid passkey signature currently authorizes any call it's attached to. Enforcing session keys (`add_session_key`'s stored whitelist) against this is the same underlying gap.
+- [ ] **Per-function auth scoping and spend caps**: a session key is currently all-or-nothing within its one whitelisted contract (e.g. it can call *any* function on that contract, not just an approved subset), and has no spending limit. Narrowing this to a per-function allowlist with caps is the real next step here, not the coarser "does auth checking exist at all" gap this used to be.
 - [ ] **Soroban Gas Estimator**: replace the current hardcoded placeholder formula in `gas-estimator` with a real resource-usage measurement.
-- [ ] **Merkle-proof vouchers**: replace `voucher-paymaster`'s simple used-ID check with real Merkle inclusion proofs.
+- [ ] **Voucher batch rotation**: `voucher-paymaster` has no versioning — registering a new root for a sponsor replaces the old one outright, so unredeemed vouchers from a previous batch become permanently unredeemable.
 - [ ] **Multi-Sig Paymaster Governance Vaults**: Multi-signature approval thresholds for depositing and withdrawing XLM gas reserves.
 - [ ] **React Native & Flutter Adapters**: Mobile SDK adapters supporting mobile WebAuthn passkey enclaves.
 

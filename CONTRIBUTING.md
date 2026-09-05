@@ -40,8 +40,12 @@ Ensure you have the following installed on your machine:
   ```
 - **WASM Compilation Target**:
   ```bash
-  rustup target add wasm32-unknown-unknown
+  rustup target add wasm32v1-none
   ```
+  Not `wasm32-unknown-unknown` — a modern rustc targeting that triple emits non-MVP wasm
+  encoding this project's soroban-sdk 21.x host rejects at simulation time with a cryptic
+  `reference-types not enabled` error. `wasm32v1-none` is the MVP-compatible target that
+  actually works; see `docs/DEPLOYMENT_GUIDE.md` if you hit that error anyway.
 - **Stellar Developer CLI** (v21+):
   ```bash
   cargo install --locked stellar-cli
@@ -68,11 +72,11 @@ contracts/
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-├── voucher-paymaster/            # Single-use voucher IDs (no Merkle proofs yet)
+├── voucher-paymaster/            # Real Merkle-inclusion voucher redemption, sponsor-scoped (no batch rotation/versioning yet)
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-├── account-abstraction-wallet/   # Owner-controlled smart account (passkey key is stored but NOT yet verified on-chain — see README)
+├── account-abstraction-wallet/   # Real on-chain secp256r1 passkey verification + enforced session-key scoping (per-contract only, no per-function caps yet — see README)
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
@@ -124,7 +128,7 @@ Before submitting your Pull Request, verify that all tests compile and pass loca
 cargo test --all
 
 # 2. Build release WASM binaries
-cargo build --target wasm32-unknown-unknown --release
+cargo build --target wasm32v1-none --release
 ```
 
 ---
