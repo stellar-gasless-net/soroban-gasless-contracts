@@ -1,8 +1,8 @@
 # soroban-gasless-contracts Deployment Guide
 
-Deploys `trusted_forwarder`, `token_paymaster`, `voucher_paymaster`, `gas_estimator`, and
-`account_abstraction_wallet` to Stellar testnet. All five pass their real test suite
-(`cargo test --all`, 14 tests — see the repo README) before this guide is relevant —
+Deploys `trusted_forwarder`, `token_paymaster`, `voucher_paymaster`, and
+`account_abstraction_wallet` to Stellar testnet. All four pass their real test suite
+(`cargo test --all`, 24 tests — see the repo README) before this guide is relevant —
 deployment doesn't substitute for that.
 
 ## Prerequisites

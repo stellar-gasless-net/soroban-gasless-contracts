@@ -68,9 +68,6 @@ stellar contract invoke --id "$TOKEN_PAYMASTER_ID" --source deployer --network "
 echo "Deploying voucher_paymaster (no init — stateless per-voucher checks)..."
 VOUCHER_PAYMASTER_ID=$(deploy voucher_paymaster)
 
-echo "Deploying gas_estimator (no init — pure function)..."
-GAS_ESTIMATOR_ID=$(deploy gas_estimator)
-
 echo "Deploying account-abstraction-wallet (demo instance)..."
 WALLET_ID=$(deploy account_abstraction_wallet)
 stellar contract invoke --id "$WALLET_ID" --source deployer --network "$NETWORK" \
@@ -86,7 +83,6 @@ cat > "$OUT_FILE" <<EOF
     "trusted_forwarder": "$FORWARDER_ID",
     "token_paymaster": "$TOKEN_PAYMASTER_ID",
     "voucher_paymaster": "$VOUCHER_PAYMASTER_ID",
-    "gas_estimator": "$GAS_ESTIMATOR_ID",
     "account_abstraction_wallet": "$WALLET_ID"
   },
   "notes": {

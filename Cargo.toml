@@ -5,7 +5,6 @@ members = [
     "contracts/token-paymaster",
     "contracts/voucher-paymaster",
     "contracts/account-abstraction-wallet",
-    "contracts/gas-estimator",
 ]
 
 [workspace.dependencies]

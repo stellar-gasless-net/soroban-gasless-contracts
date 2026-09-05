@@ -76,13 +76,13 @@ contracts/
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-├── account-abstraction-wallet/   # Real on-chain secp256r1 passkey verification + enforced session-key scoping (per-contract only, no per-function caps yet — see README)
-│   ├── src/lib.rs
-│   ├── src/errors.rs
-│   └── src/test.rs
-└── gas-estimator/                # Placeholder only — returns a hardcoded formula, not a real estimate
-    └── src/lib.rs
+└── account-abstraction-wallet/   # Real on-chain secp256r1 passkey verification + enforced session-key scoping (per-contract only, no per-function caps yet — see README)
+    ├── src/lib.rs
+    ├── src/errors.rs
+    └── src/test.rs
 ```
+
+There used to be a fifth contract here, `gas-estimator`. It was removed 2026-09-05 — see the README's "Removed: Gas Estimator" note for why a genuine on-chain version of it isn't achievable.
 
 ---
 

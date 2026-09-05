@@ -86,20 +86,20 @@ This describes what each contract's code does *today*, verified against the sour
 * **Implemented and wired for real**: `execute()` calls `env.current_contract_address().require_auth()` — since this contract implements Soroban's `CustomAccountInterface`, that routes through this contract's own `__check_auth`, which now accepts one of two real signature kinds. `WalletSignature::Owner` verifies a real WebAuthn/secp256r1 passkey signature (challenge-embedding check, `authenticatorData || SHA-256(clientDataJSON)` reconstruction, `secp256r1_verify` against the stored key) and grants full authority — correctly so, since the host already binds the signed digest to the exact set of calls being authorized. `WalletSignature::Session` is new: a session key added via `add_session_key` is now actually enforced, not just stored. `__check_auth` inspects `auth_contexts` to confirm every call the session key is being used for — including reading the real target out of `execute()`'s own arguments, not just its own contract address — targets that session key's single whitelisted contract, rejects it if expired, and only then asks the host to verify the session key's own real signature via `require_auth()`. `verify_passkey_signature()` remains available as a standalone entry point and shares its core logic with `__check_auth`'s owner path via one function (`passkey_message_digest`). Covered by 10 tests using real cryptographic material: a real P-256 keypair for the owner-passkey tests, and real `Context` values matching what the host actually builds for the session-key tests (accepts an in-scope call, rejects an out-of-scope call even with a genuinely valid signature, rejects an expired key, rejects an unregistered key).
 * **Not implemented yet**: a session key is all-or-nothing within its one whitelisted contract — there's no per-function allowlist (e.g. "can call `swap` but not `withdraw_all`" on the same contract) and no spending caps.
 
-### 4. Gas Estimator (`gas-estimator`)
-* **Not implemented**: `estimate_execution_overhead` returns a hardcoded formula (`5000 + args.len() * 100`) and ignores the target contract and function entirely. It does not measure real Soroban resource usage. Treat this contract as a placeholder — see the Phase 2 roadmap below.
-
-### 5. Relayer Keypair Rotation (`stellar-gasless-relayer`)
+### 4. Relayer Keypair Rotation (`stellar-gasless-relayer`)
 * **Implemented**: rotates through the configured `RELAYER_SECRETS` pool per request, and pre-flight simulates every inner transaction against Soroban RPC before sponsoring the fee.
 
-### 6. Console UI (`gasless-relayer-dashboard`)
+### 5. Console UI (`gasless-relayer-dashboard`)
 * **UI mockup only, no backend.** See that repo's README — the relayer it's designed to talk to isn't deployed anywhere.
+
+### Removed: Gas Estimator (2026-09-05)
+This workspace used to include a `gas-estimator` contract whose `estimate_execution_overhead` returned a hardcoded formula (`5000 + args.len() * 100`), ignoring the target contract and function entirely. Making that a genuine on-chain measurement turned out to be infeasible, not just unbuilt: a contract can only learn a call's real resource cost by actually invoking it (via `env.budget()` before/after), which means actually performing whatever side effects that call has — a token transfer would actually transfer tokens just to "estimate" its cost. That's unsafe and defeats the point of an estimate. Real Soroban gas/resource estimation is correctly an off-chain RPC preflight-simulation concern, and `stellar-gasless-relayer`'s `SorobanSimulator` already does this for real via `simulateTransaction` before ever sponsoring a fee — this protocol didn't need a second, on-chain, unavoidably-fake version of the same thing. The contract was removed from this workspace rather than left as a permanent placeholder; its old testnet address is kept in `deployments/testnet.json`'s notes purely as a historical record (a deployed Soroban contract can't be deleted from the ledger), not presented as a working feature.
 
 ---
 
 ## Deployment
 
-All five contracts are live on Stellar testnet (deployed 2026-09-03, see
+All four contracts are live on Stellar testnet (deployed 2026-09-03, see
 [`deployments/testnet.json`](deployments/testnet.json) — independently checkable on
 [stellar.expert](https://stellar.expert/explorer/testnet)):
 
@@ -108,7 +108,6 @@ All five contracts are live on Stellar testnet (deployed 2026-09-03, see
 | `trusted_forwarder` | `CBW2NKANV2HBRSPM5KMRUIKRFWTXO5RTOYWSAY3BHGYSRXNA7443LWUW` |
 | `token_paymaster` | `CAOWMY7YUKA4RNOA43SRFMFYDXRQNQB7EGVWHPTXRQEGK5UOMLZDCYPU` |
 | `voucher_paymaster` | `CBDBUQMTLZMXSLHC7I3OJWH7CENHGTCYTUB6FUUOJSYNWSS5ED2T4JZS` |
-| `gas_estimator` | `CB7LM3KHQS6W3EVYWYZDCH572OUP7YELJVF3UNHYAVXZNIGZO6DHT2O3` |
 | `account_abstraction_wallet` | `CC42GVJVXHEWXHPL3H2CTBXVKKRJ6RMT7N7UZYRFLYRK4ONH5INGJGT5` |
 
 `token_paymaster` is initialized against testnet's real native XLM Stellar Asset Contract
@@ -215,7 +214,7 @@ Before contributing code or opening pull requests, please review our contributor
 ```
 
 ### Phase 1 (Built, unaudited)
-- [x] All 5 contracts compile with a passing `cargo test --all` (26 tests total). `trusted-forwarder`'s replay-guard and deadline-expiry logic, `account-abstraction-wallet`'s passkey auth and session-key scoping, `voucher-paymaster`'s Merkle-coupon verification (including a real front-running fix and per-sponsor scoping), and `token-paymaster`'s fee-charging and reserve-withdrawal are all directly tested — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
+- [x] All 4 contracts compile with a passing `cargo test --all` (24 tests total). `trusted-forwarder`'s replay-guard and deadline-expiry logic, `account-abstraction-wallet`'s passkey auth and session-key scoping, `voucher-paymaster`'s Merkle-coupon verification (including a real front-running fix and per-sponsor scoping), and `token-paymaster`'s fee-charging and reserve-withdrawal are all directly tested — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
 - [x] Relayer engine with multi-keypair rotation and real Soroban RPC pre-flight simulation (see `stellar-gasless-relayer`).
 - [x] WebAuthn passkey authentication, wired end to end: browser signature request (SDK) → on-chain secp256r1 verification → actually gates `execute()` via `CustomAccountInterface`/`__check_auth`, not just a standalone verifier — see `account-abstraction-wallet` above.
 - [x] Session-key scoping, enforced for real: `__check_auth` inspects `auth_contexts` and confirms every call a session key is used for targets that key's one whitelisted contract — see `account-abstraction-wallet` above for exactly what this does and doesn't cover yet.
@@ -224,7 +223,6 @@ Before contributing code or opening pull requests, please review our contributor
 
 ### Phase 2 (Upcoming)
 - [ ] **Per-function auth scoping and spend caps**: a session key is currently all-or-nothing within its one whitelisted contract (e.g. it can call *any* function on that contract, not just an approved subset), and has no spending limit. Narrowing this to a per-function allowlist with caps is the real next step here, not the coarser "does auth checking exist at all" gap this used to be.
-- [ ] **Soroban Gas Estimator**: replace the current hardcoded placeholder formula in `gas-estimator` with a real resource-usage measurement.
 - [ ] **Voucher batch rotation**: `voucher-paymaster` has no versioning — registering a new root for a sponsor replaces the old one outright, so unredeemed vouchers from a previous batch become permanently unredeemable.
 - [ ] **Multi-Sig Paymaster Governance Vaults**: Multi-signature approval thresholds for depositing and withdrawing XLM gas reserves.
 - [ ] **React Native & Flutter Adapters**: Mobile SDK adapters supporting mobile WebAuthn passkey enclaves.

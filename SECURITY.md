@@ -9,7 +9,7 @@ https://github.com/stellar-gasless-net/soroban-gasless-contracts/security/adviso
 
 ### What to Include in Your Report
 - Detailed steps to reproduce the vulnerability.
-- Affected contract (`trusted-forwarder`, `token-paymaster`, `voucher-paymaster`, `account-abstraction-wallet`, or `gas-estimator`).
+- Affected contract (`trusted-forwarder`, `token-paymaster`, `voucher-paymaster`, or `account-abstraction-wallet`).
 - Impact assessment and potential severity.
 
 No formal response SLA or bug bounty program exists yet — this is a small, early-stage, unaudited project maintained by one person. Reports will be acknowledged as promptly as possible, but there's no guaranteed turnaround time to promise right now.
