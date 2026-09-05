@@ -25,15 +25,20 @@ a real keypair for exercising the deployed contract; it isn't tied to any actual
 authenticator, and the resulting wallet should be treated as a demo instance, not a
 real user's account.
 
+Generate it **outside the repo tree** — even a `.gitignore`'d file sitting in the repo
+folder is real private key material that would leak if the whole folder is ever
+zipped/tarred (rather than `git archive`'d) for sharing, rather than relying solely on
+`.gitignore` to keep it out of version control:
+
 ```bash
-openssl ecparam -name prime256v1 -genkey -noout -out demo_wallet_passkey.pem
-export DEMO_PASSKEY_PUBKEY=$(openssl ec -in demo_wallet_passkey.pem -pubout -outform DER 2>/dev/null | tail -c 65 | xxd -p -c 65)
+mkdir -p ~/.stellar-gasless-demo-keys
+openssl ecparam -name prime256v1 -genkey -noout -out ~/.stellar-gasless-demo-keys/demo_wallet_passkey.pem
+export DEMO_PASSKEY_PUBKEY=$(openssl ec -in ~/.stellar-gasless-demo-keys/demo_wallet_passkey.pem -pubout -outform DER 2>/dev/null | tail -c 65 | xxd -p -c 65)
 ```
 
-Keep `demo_wallet_passkey.pem` if you want to later demonstrate a real signed
-`__check_auth` call against the deployed wallet (see `contracts/account-abstraction-wallet/src/test.rs`
-for the exact WebAuthn-shaped signing flow this contract expects). Do not commit it —
-it's excluded via `.gitignore`.
+Keep the `.pem` file if you want to later demonstrate a real signed `__check_auth` call
+against the deployed wallet (see `contracts/account-abstraction-wallet/src/test.rs` for the
+exact WebAuthn-shaped signing flow this contract expects).
 
 ## 2. Deploy
 
