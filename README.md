@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](./LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=for-the-badge)](./CONTRIBUTING.md)
 
-**Stellar Gasless Network** is a high-throughput, enterprise-grade Gasless Meta-Transaction & Fee Delegation Protocol built natively for Stellar and Soroban WASM smart contracts. It empowers dApp developers to offer **100% zero-gas, 1-click user onboarding experiences** using WebAuthn Passkeys (TouchID/FaceID), native `FeeBumpTransaction` relayers, and dynamic Paymaster gas vaults.
+**Stellar Gasless Network** is a Gasless Meta-Transaction & Fee Delegation protocol for Stellar and Soroban: real, tested, unaudited testnet contracts (see Current Status below) that let a dApp sponsor a user's transaction fee, so the user never needs to hold XLM to interact with it. Uses WebAuthn Passkeys (TouchID/FaceID), native `FeeBumpTransaction` relayers, and Paymaster gas vaults.
 
 ---
 
