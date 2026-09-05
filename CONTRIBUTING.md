@@ -72,7 +72,7 @@ contracts/
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs
-├── voucher-paymaster/            # Real Merkle-inclusion voucher redemption, sponsor-scoped (no batch rotation/versioning yet)
+├── voucher-paymaster/            # Real Merkle-inclusion voucher redemption, sponsor-scoped, with real batch versioning
 │   ├── src/lib.rs
 │   ├── src/errors.rs
 │   └── src/test.rs

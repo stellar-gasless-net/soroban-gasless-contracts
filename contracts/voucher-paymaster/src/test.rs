@@ -56,10 +56,11 @@ fn test_validate_voucher_accepts_a_real_valid_merkle_proof() {
         BytesN::from_array(&env, &[3u8; 32]),
     ];
     let tree = build_tree(&env, leaves);
-    client.register_voucher_batch(&sponsor, &tree.root);
+    let version = client.register_voucher_batch(&sponsor, &tree.root);
+    assert_eq!(version, 1, "a sponsor's first batch is version 1");
 
     let proof = proof_for_leaf0(&env, &tree);
-    let result = client.validate_voucher(&sponsor, &user, &voucher_id, &max_fee, &proof, &0u32);
+    let result = client.validate_voucher(&sponsor, &user, &version, &voucher_id, &max_fee, &proof, &0u32);
     assert!(result, "a genuine Merkle path to the sponsor's real registered batch must verify");
 }
 
@@ -81,13 +82,13 @@ fn test_validate_voucher_rejects_a_replayed_voucher_id() {
         BytesN::from_array(&env, &[3u8; 32]),
     ];
     let tree = build_tree(&env, leaves);
-    client.register_voucher_batch(&sponsor, &tree.root);
+    let version = client.register_voucher_batch(&sponsor, &tree.root);
     let proof = proof_for_leaf0(&env, &tree);
 
-    client.validate_voucher(&sponsor, &user, &voucher_id, &max_fee, &proof, &0u32);
-    // Second redemption of the exact same voucher_id must be rejected even though the
-    // proof itself is still perfectly valid — replay protection, not proof validity.
-    client.validate_voucher(&sponsor, &user, &voucher_id, &max_fee, &proof, &0u32);
+    client.validate_voucher(&sponsor, &user, &version, &voucher_id, &max_fee, &proof, &0u32);
+    // Second redemption of the exact same voucher_id in the same batch must be rejected even
+    // though the proof itself is still perfectly valid — replay protection, not proof validity.
+    client.validate_voucher(&sponsor, &user, &version, &voucher_id, &max_fee, &proof, &0u32);
 }
 
 #[test]
@@ -107,13 +108,13 @@ fn test_validate_voucher_rejects_a_claimed_fee_the_sponsor_never_committed_to() 
         BytesN::from_array(&env, &[3u8; 32]),
     ];
     let tree = build_tree(&env, leaves);
-    client.register_voucher_batch(&sponsor, &tree.root);
+    let version = client.register_voucher_batch(&sponsor, &tree.root);
     let proof = proof_for_leaf0(&env, &tree);
 
     // Same voucher_id and proof, but a caller-inflated max_fee the sponsor never signed off
     // on — the leaf this recomputes no longer matches what's in the tree, so it must fail.
     let claimed_max_fee = 5_000_000i128;
-    let result = client.validate_voucher(&sponsor, &user, &voucher_id, &claimed_max_fee, &proof, &0u32);
+    let result = client.validate_voucher(&sponsor, &user, &version, &voucher_id, &claimed_max_fee, &proof, &0u32);
     assert!(!result, "a fee cap the sponsor never committed to must not verify");
 }
 
@@ -125,7 +126,7 @@ fn test_validate_voucher_rejects_a_sponsor_with_no_registered_batch() {
     let (client, sponsor) = setup(&env);
     let user = Address::generate(&env);
 
-    client.validate_voucher(&sponsor, &user, &1001u64, &500_000i128, &Vec::new(&env), &0u32);
+    client.validate_voucher(&sponsor, &user, &1u32, &1001u64, &500_000i128, &Vec::new(&env), &0u32);
 }
 
 #[test]
@@ -153,9 +154,9 @@ fn test_validate_voucher_does_not_let_one_sponsors_redemption_block_another_spon
             BytesN::from_array(&env, &[3u8; 32]),
         ],
     );
-    client.register_voucher_batch(&sponsor_a, &tree_a.root);
+    let version_a = client.register_voucher_batch(&sponsor_a, &tree_a.root);
     let proof_a = proof_for_leaf0(&env, &tree_a);
-    assert!(client.validate_voucher(&sponsor_a, &user, &voucher_id, &max_fee, &proof_a, &0u32));
+    assert!(client.validate_voucher(&sponsor_a, &user, &version_a, &voucher_id, &max_fee, &proof_a, &0u32));
 
     // Sponsor B's completely unrelated batch happens to also use voucher_id 1001. Redeeming
     // sponsor A's voucher above must not have any effect on sponsor B's.
@@ -169,10 +170,75 @@ fn test_validate_voucher_does_not_let_one_sponsors_redemption_block_another_spon
             BytesN::from_array(&env, &[7u8; 32]),
         ],
     );
-    client.register_voucher_batch(&sponsor_b, &tree_b.root);
+    let version_b = client.register_voucher_batch(&sponsor_b, &tree_b.root);
     let proof_b = proof_for_leaf0(&env, &tree_b);
     assert!(
-        client.validate_voucher(&sponsor_b, &user, &voucher_id, &max_fee, &proof_b, &0u32),
+        client.validate_voucher(&sponsor_b, &user, &version_b, &voucher_id, &max_fee, &proof_b, &0u32),
         "sponsor B's voucher must redeem independently of sponsor A's same-numbered voucher"
     );
+}
+
+#[test]
+fn test_rotating_to_a_new_batch_does_not_orphan_an_unredeemed_voucher_from_the_old_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, sponsor) = setup(&env);
+    let user = Address::generate(&env);
+
+    // Batch 1: sponsor's first ever voucher batch.
+    let old_voucher_id = 1001u64;
+    let max_fee = 500_000i128;
+    let old_leaf = VoucherPaymasterContract::compute_leaf(&env, old_voucher_id, max_fee);
+    let old_tree = build_tree(
+        &env,
+        [
+            old_leaf,
+            BytesN::from_array(&env, &[1u8; 32]),
+            BytesN::from_array(&env, &[2u8; 32]),
+            BytesN::from_array(&env, &[3u8; 32]),
+        ],
+    );
+    let old_version = client.register_voucher_batch(&sponsor, &old_tree.root);
+    assert_eq!(client.get_latest_batch_version(&sponsor), old_version);
+
+    // Sponsor rotates to a brand new batch (e.g. next month's voucher run) before the user
+    // above ever redeemed their batch-1 voucher.
+    let new_voucher_id = 1001u64; // deliberately reuses the same id — must not collide
+    let new_leaf = VoucherPaymasterContract::compute_leaf(&env, new_voucher_id, max_fee);
+    let new_tree = build_tree(
+        &env,
+        [
+            new_leaf,
+            BytesN::from_array(&env, &[9u8; 32]),
+            BytesN::from_array(&env, &[8u8; 32]),
+            BytesN::from_array(&env, &[7u8; 32]),
+        ],
+    );
+    let new_version = client.register_voucher_batch(&sponsor, &new_tree.root);
+    assert_eq!(new_version, old_version + 1);
+    assert_eq!(client.get_latest_batch_version(&sponsor), new_version);
+
+    // The whole point: the OLD, still-unredeemed voucher from batch 1 must still redeem
+    // successfully, even though the sponsor has since moved on to batch 2.
+    let old_proof = proof_for_leaf0(&env, &old_tree);
+    assert!(
+        client.validate_voucher(&sponsor, &user, &old_version, &old_voucher_id, &max_fee, &old_proof, &0u32),
+        "an unredeemed voucher from a previous batch must remain redeemable after rotation"
+    );
+
+    // And the new batch's same-numbered voucher redeems independently too.
+    let new_proof = proof_for_leaf0(&env, &new_tree);
+    assert!(
+        client.validate_voucher(&sponsor, &user, &new_version, &new_voucher_id, &max_fee, &new_proof, &0u32),
+        "the new batch's voucher must redeem independently of the old batch's same-numbered one"
+    );
+}
+
+#[test]
+fn test_get_latest_batch_version_is_zero_before_any_batch_is_registered() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, sponsor) = setup(&env);
+
+    assert_eq!(client.get_latest_batch_version(&sponsor), 0);
 }

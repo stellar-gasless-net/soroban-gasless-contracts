@@ -7,15 +7,20 @@ const MAX_PROOF_DEPTH: usize = 32;
 
 #[contracttype]
 pub enum DataKey {
-    /// One active voucher-batch root per sponsor. Registering a new one replaces it —
-    /// there's no versioning; a sponsor rotating batches mid-flight would invalidate any
-    /// unredeemed vouchers from the previous batch.
-    SponsorRoot(Address),
-    /// Keyed by (sponsor, voucher_id), not voucher_id alone — two independent sponsors
-    /// numbering their vouchers the same way (e.g. both starting at id=1) must not be able
-    /// to grief each other by exhausting a voucher_id that belongs to a different sponsor's
-    /// batch entirely.
-    Used(Address, u64),
+    /// Root for one specific (sponsor, batch_version) pair. Each `register_voucher_batch`
+    /// call gets its own version instead of overwriting the previous one, so vouchers from
+    /// an earlier batch stay redeemable after a sponsor rotates to a new batch — only the
+    /// sponsor's "latest" pointer moves.
+    SponsorRoot(Address, u32),
+    /// The most recently registered batch version for a sponsor. The next
+    /// `register_voucher_batch` call assigns latest + 1, starting at 1 for a sponsor's first
+    /// batch (0 means "no batch registered yet").
+    SponsorLatestVersion(Address),
+    /// Keyed by (sponsor, batch_version, voucher_id) — including batch_version means two
+    /// different batches from the same sponsor (or two different sponsors) can safely reuse
+    /// the same voucher_id without colliding, and a voucher only blocks redemption of the
+    /// exact batch it actually belongs to.
+    Used(Address, u32, u64),
 }
 
 #[contract]
@@ -28,22 +33,52 @@ impl VoucherPaymasterContract {
     /// vouchers then redeem via `validate_voucher` without the sponsor needing to be present
     /// or sign again, which is the actual point of a voucher system (bulk-approve now,
     /// redeem later, potentially by a relayer on the user's behalf).
-    pub fn register_voucher_batch(env: Env, sponsor: Address, root: BytesN<32>) {
+    ///
+    /// Returns the new batch's version number, which callers must hand out alongside each
+    /// voucher's id/proof so redeemers know which registered root to check it against — this
+    /// call never overwrites or invalidates a previous batch, it only adds a new one.
+    pub fn register_voucher_batch(env: Env, sponsor: Address, root: BytesN<32>) -> u32 {
         sponsor.require_auth();
-        env.storage().persistent().set(&DataKey::SponsorRoot(sponsor.clone()), &root);
-        env.events().publish((symbol_short!("vb_reg"), sponsor), root);
+
+        let latest_key = DataKey::SponsorLatestVersion(sponsor.clone());
+        let prev_version: u32 = env.storage().persistent().get(&latest_key).unwrap_or(0);
+        let new_version = prev_version + 1;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::SponsorRoot(sponsor.clone(), new_version), &root);
+        env.storage().persistent().set(&latest_key, &new_version);
+
+        env.events()
+            .publish((symbol_short!("vb_reg"), sponsor), (new_version, root));
+        new_version
     }
 
-    /// Verifies `(voucher_id, max_fee)` was genuinely included in `sponsor`'s registered
-    /// batch, via a real Merkle path — not just an opaque ID the caller could invent. This
-    /// replaces the old design, which only checked a `sponsor.require_auth()` signature
-    /// live on every single redemption (defeating the point of a pre-approved batch) and
-    /// never verified `max_fee` against anything the sponsor actually committed to, so a
-    /// caller could claim any fee cap for a given voucher ID.
+    /// The most recently registered batch version for `sponsor`, or 0 if they've never
+    /// registered one. Tooling issuing new vouchers reads this before calling
+    /// `register_voucher_batch` again, and off-chain code preparing a redemption reads it to
+    /// find the current batch — though any earlier version is still independently valid.
+    pub fn get_latest_batch_version(env: Env, sponsor: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::SponsorLatestVersion(sponsor))
+            .unwrap_or(0)
+    }
+
+    /// Verifies `(voucher_id, max_fee)` was genuinely included in `sponsor`'s batch numbered
+    /// `batch_version`, via a real Merkle path — not just an opaque ID the caller could
+    /// invent. Any batch version the sponsor has ever registered can still be redeemed
+    /// against, not just their latest — rotating to a new batch no longer orphans unredeemed
+    /// vouchers from an older one. This replaces the old design, which only checked a
+    /// `sponsor.require_auth()` signature live on every single redemption (defeating the
+    /// point of a pre-approved batch) and never verified `max_fee` against anything the
+    /// sponsor actually committed to, so a caller could claim any fee cap for a given
+    /// voucher ID.
     pub fn validate_voucher(
         env: Env,
         sponsor: Address,
         user: Address,
+        batch_version: u32,
         voucher_id: u64,
         max_fee: i128,
         merkle_proof: Vec<BytesN<32>>,
@@ -59,7 +94,7 @@ impl VoucherPaymasterContract {
             panic!("Merkle proof is deeper than the supported maximum");
         }
 
-        let used_key = DataKey::Used(sponsor.clone(), voucher_id);
+        let used_key = DataKey::Used(sponsor.clone(), batch_version, voucher_id);
         if env.storage().persistent().has(&used_key) {
             panic!("Voucher already claimed");
         }
@@ -67,8 +102,8 @@ impl VoucherPaymasterContract {
         let root: BytesN<32> = env
             .storage()
             .persistent()
-            .get(&DataKey::SponsorRoot(sponsor.clone()))
-            .expect("sponsor has no registered voucher batch");
+            .get(&DataKey::SponsorRoot(sponsor.clone(), batch_version))
+            .expect("sponsor has no registered voucher batch with this version");
 
         let leaf = Self::compute_leaf(&env, voucher_id, max_fee);
         let computed_root = Self::compute_root(&env, &leaf, &merkle_proof, leaf_index);
@@ -79,7 +114,7 @@ impl VoucherPaymasterContract {
         env.storage().persistent().set(&used_key, &true);
         env.events().publish(
             (symbol_short!("voucher"), sponsor, user),
-            (voucher_id, max_fee),
+            (batch_version, voucher_id, max_fee),
         );
 
         true

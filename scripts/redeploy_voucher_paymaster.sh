@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Targeted redeploy of ONLY voucher-paymaster, after the sponsor-scoping (Used key) and
-# front-running (user.require_auth) fixes. Every other contract in this workspace is
-# unchanged and keeps its existing testnet address — this script does not touch them.
+# Targeted redeploy of ONLY voucher-paymaster, after adding real batch versioning:
+# register_voucher_batch no longer overwrites a sponsor's previous root, and
+# validate_voucher now takes a batch_version so any batch a sponsor has ever registered
+# stays redeemable, not just their latest. This is a breaking ABI change (validate_voucher
+# gained a parameter), so the old instance genuinely can't be reused. Every other contract
+# in this workspace is unchanged and keeps its existing testnet address — this script does
+# not touch them.
 #
 # voucher-paymaster has no initialize() (stateless per-voucher checks — see its own
 # doc comments), so this is just build + deploy + record. No demo data existed on the
@@ -50,7 +54,7 @@ jq \
   --arg old_id "$OLD_ID" \
   --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '.contracts.voucher_paymaster = $new_id
-   | .notes.voucher_paymaster = ("Redeployed " + $ts + " after fixing sponsor-scoping (Used key now keyed by (sponsor, voucher_id), not voucher_id alone) and adding user.require_auth() to close a front-running/griefing hole in validate_voucher() — " + $old_id + " was the pre-fix instance and is stale. No voucher batch is registered yet on this new instance; register_voucher_batch must be called by a real sponsor before any voucher can be redeemed.")' \
+   | .notes.voucher_paymaster = ("Redeployed " + $ts + " after adding real batch versioning: register_voucher_batch now returns a version number instead of silently overwriting the sponsor'"'"'s previous root, and validate_voucher takes that version so any batch a sponsor has ever registered stays redeemable, not just their latest. This is a breaking ABI change (validate_voucher gained a batch_version parameter), so " + $old_id + " is stale and cannot be reused as-is. No voucher batch is registered yet on this new instance; register_voucher_batch must be called by a real sponsor before any voucher can be redeemed.")' \
   "$DEPLOYMENTS_FILE" > "$TMP_FILE"
 mv "$TMP_FILE" "$DEPLOYMENTS_FILE"
 
