@@ -1,6 +1,6 @@
 {
   "generators": {
-    "address": 4,
+    "address": 5,
     "nonce": 0
   },
   "auth": [
@@ -44,13 +44,18 @@
                 {
                   "vec": [
                     {
-                      "symbol": "noop"
+                      "symbol": "transfer"
                     }
                   ]
                 },
-                "void",
                 {
-                  "u64": 0
+                  "i128": {
+                    "hi": 0,
+                    "lo": 1000
+                  }
+                },
+                {
+                  "u64": 10000
                 }
               ]
             }
@@ -64,7 +69,7 @@
   "ledger": {
     "protocol_version": 21,
     "sequence_number": 0,
-    "timestamp": 1,
+    "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
     "min_persistent_entry_ttl": 4096,
@@ -123,7 +128,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "noop"
+                            "symbol": "transfer"
                           }
                         ]
                       }
@@ -133,14 +138,19 @@
                         "symbol": "expires_at"
                       },
                       "val": {
-                        "u64": 0
+                        "u64": 10000
                       }
                     },
                     {
                       "key": {
                         "symbol": "spend_cap"
                       },
-                      "val": "void"
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 1000
+                        }
+                      }
                     },
                     {
                       "key": {
@@ -392,13 +402,18 @@
                 {
                   "vec": [
                     {
-                      "symbol": "noop"
+                      "symbol": "transfer"
                     }
                   ]
                 },
-                "void",
                 {
-                  "u64": 0
+                  "i128": {
+                    "hi": 0,
+                    "lo": 1000
+                  }
+                },
+                {
+                  "u64": 10000
                 }
               ]
             }
@@ -430,13 +445,18 @@
                 {
                   "vec": [
                     {
-                      "symbol": "noop"
+                      "symbol": "transfer"
                     }
                   ]
                 },
-                "void",
                 {
-                  "u64": 0
+                  "i128": {
+                    "hi": 0,
+                    "lo": 1000
+                  }
+                },
+                {
+                  "u64": 10000
                 }
               ]
             }

@@ -42,6 +42,14 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
+                  "vec": [
+                    {
+                      "symbol": "noop"
+                    }
+                  ]
+                },
+                "void",
+                {
                   "u64": 10000
                 }
               ]
@@ -110,10 +118,39 @@
                     },
                     {
                       "key": {
+                        "symbol": "allowed_functions"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "noop"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "expires_at"
                       },
                       "val": {
                         "u64": 10000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "spend_cap"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "spent"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 0
+                        }
                       }
                     }
                   ]
@@ -353,6 +390,14 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
+                  "vec": [
+                    {
+                      "symbol": "noop"
+                    }
+                  ]
+                },
+                "void",
+                {
                   "u64": 10000
                 }
               ]
@@ -382,6 +427,14 @@
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
+                {
+                  "vec": [
+                    {
+                      "symbol": "noop"
+                    }
+                  ]
+                },
+                "void",
                 {
                   "u64": 10000
                 }

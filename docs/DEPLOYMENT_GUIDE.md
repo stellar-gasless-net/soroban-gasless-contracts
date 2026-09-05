@@ -2,7 +2,7 @@
 
 Deploys `trusted_forwarder`, `token_paymaster`, `voucher_paymaster`, and
 `account_abstraction_wallet` to Stellar testnet. All four pass their real test suite
-(`cargo test --all`, 24 tests — see the repo README) before this guide is relevant —
+(`cargo test --all`, 35 tests — see the repo README) before this guide is relevant —
 deployment doesn't substitute for that.
 
 ## Prerequisites
