@@ -1,5 +1,6 @@
 # Soroban Gasless Smart Contracts (`soroban-gasless-contracts`)
 
+[![CI](https://github.com/stellar-gasless-net/soroban-gasless-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/stellar-gasless-net/soroban-gasless-contracts/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-1.78+-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Soroban SDK](https://img.shields.io/badge/Soroban_SDK-v21.2.0-7C3AED?style=for-the-badge&logo=rust&logoColor=white)](https://soroban.stellar.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](./LICENSE)
