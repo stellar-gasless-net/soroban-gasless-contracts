@@ -106,7 +106,7 @@ All four contracts are live on Stellar testnet (deployed 2026-09-03, see
 | `trusted_forwarder` | `CDFBWUWRZJ7VEEVLOBE7C5LLUBFNTI5NJ6FQLIPQSBSJPC3DPLQEGAHW` |
 | `token_paymaster` | `CAOWMY7YUKA4RNOA43SRFMFYDXRQNQB7EGVWHPTXRQEGK5UOMLZDCYPU` |
 | `voucher_paymaster` | `CBB6LYJDAAFS2Q6DI3F46FNPNSSLBIHAEFCRLKH5E2BC7MX64CWXVQK3` |
-| `account_abstraction_wallet` | `CC42GVJVXHEWXHPL3H2CTBXVKKRJ6RMT7N7UZYRFLYRK4ONH5INGJGT5` |
+| `account_abstraction_wallet` | `CB6CXIQDMOR2JSYVUOHQRFOPZ3TZVKY45RKQXAEQFCWXIPBLI3ST4FR3` |
 
 `token_paymaster` is initialized against testnet's real native XLM Stellar Asset Contract
 (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`), not a placeholder token.
