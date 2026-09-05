@@ -64,7 +64,7 @@ git remote add upstream https://github.com/stellar-gasless-net/soroban-gasless-c
 
 ```
 contracts/
-├── trusted-forwarder/            # Meta-Tx Forwarder (nonce replay guard, deadline check — no domain separator or batching yet)
+├── trusted-forwarder/            # Meta-Tx Forwarder (nonce replay guard, deadline check, atomic execute_batch)
 │   ├── src/lib.rs                # Main contract logic
 │   ├── src/errors.rs             # #[contracterror] enums
 │   └── src/test.rs               # Soroban Env unit tests

@@ -53,7 +53,7 @@ Our protocol leverages **Stellar Native Fee-Bump Transactions (`FeeBumpTransacti
 │                                ON-CHAIN SMART CONTRACT LAYER                            │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                      soroban-gasless-contracts WASM Suite                         │  │
-│  │  - trusted-forwarder: EIP-712 Domain Separator, Nonce Bitmap Replay Guard         │  │
+│  │  - trusted-forwarder: Sequential Nonce Replay Guard, Atomic Batch Dispatch        │  │
 │  │  - token-paymaster: SAC USDC Dynamic Fee Swap & Discount Tier Settlement          │  │
 │  │  - voucher-paymaster: Single-use ECDSA Coupon & Merkle Inclusion Proofs           │  │
 │  │  - account-abstraction-wallet: Native secp256r1 Passkey Smart Accounts            │  │
@@ -73,8 +73,8 @@ Our protocol leverages **Stellar Native Fee-Bump Transactions (`FeeBumpTransacti
 This describes what each contract's code does *today*, verified against the source, not the original aspirational spec. Where a feature is planned but not built, it's called out explicitly instead of implied.
 
 ### 1. Trusted Forwarder (`trusted-forwarder`)
-* **Implemented**: sequential nonce replay guard, a deadline expiry check, single-call dispatch to a target contract via `env.invoke_contract`, and a `Forwarded` event.
-* **Not implemented yet**: no EIP-712-style domain separator (no chain/contract-bound signing domain), and no `execute_batch` — only one call per forwarded transaction, not atomic batches.
+* **Implemented**: sequential nonce replay guard, a deadline expiry check, single-call dispatch via `execute_forwarded`, atomic multi-call dispatch via `execute_batch` (added 2026-09-06 — one signature and one nonce covering the whole `Vec<BatchCall>`; if any call in the batch panics, the entire invocation rolls back, including the nonce bump, since Soroban transactions are atomic by default), and `Forwarded`/batch-forward events.
+* **No separate EIP-712-style domain separator, and this isn't a gap.** That roadmap item was carried over from an Ethereum-shaped mental model that doesn't map onto how Soroban authorization actually works: `user.require_auth()` is validated by the host against the *current network's* passphrase and the *exact* invocation tree being authorized — including this specific contract's address at its position in that tree. A signed authorization for calling this contract cannot be replayed against a different contract instance or a different network, which is exactly what EIP-712's `verifyingContract`/`chainId` fields exist to bolt onto Ethereum's otherwise-domainless signing. Soroban has that binding natively; there was never a real gap here to close.
 
 ### 2. Paymasters (`token-paymaster`, `voucher-paymaster`)
 * **`token-paymaster`, implemented**: a flat per-transaction fee charged in a single configured SAC token, transferred straight to the relayer treasury.
@@ -214,7 +214,7 @@ Before contributing code or opening pull requests, please review our contributor
 ```
 
 ### Phase 1 (Built, unaudited)
-- [x] All 4 contracts compile with a passing `cargo test --all` (24 tests total). `trusted-forwarder`'s replay-guard and deadline-expiry logic, `account-abstraction-wallet`'s passkey auth and session-key scoping, `voucher-paymaster`'s Merkle-coupon verification (including a real front-running fix and per-sponsor scoping), and `token-paymaster`'s fee-charging and reserve-withdrawal are all directly tested — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
+- [x] All 4 contracts compile with a passing `cargo test --all` (28 tests total). `trusted-forwarder`'s replay-guard, deadline-expiry, and atomic-batch logic, `account-abstraction-wallet`'s passkey auth and session-key scoping, `voucher-paymaster`'s Merkle-coupon verification (including a real front-running fix and per-sponsor scoping), and `token-paymaster`'s fee-charging and reserve-withdrawal are all directly tested — see "What's Actually Implemented" above for what each one really does today. **No third-party or self-audit has been performed.** Treat this as early, unaudited code, not production-ready.
 - [x] Relayer engine with multi-keypair rotation and real Soroban RPC pre-flight simulation (see `stellar-gasless-relayer`).
 - [x] WebAuthn passkey authentication, wired end to end: browser signature request (SDK) → on-chain secp256r1 verification → actually gates `execute()` via `CustomAccountInterface`/`__check_auth`, not just a standalone verifier — see `account-abstraction-wallet` above.
 - [x] Session-key scoping, enforced for real: `__check_auth` inspects `auth_contexts` and confirms every call a session key is used for targets that key's one whitelisted contract — see `account-abstraction-wallet` above for exactly what this does and doesn't cover yet.
