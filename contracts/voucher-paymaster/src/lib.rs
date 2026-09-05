@@ -11,7 +11,11 @@ pub enum DataKey {
     /// there's no versioning; a sponsor rotating batches mid-flight would invalidate any
     /// unredeemed vouchers from the previous batch.
     SponsorRoot(Address),
-    Used(u64),
+    /// Keyed by (sponsor, voucher_id), not voucher_id alone — two independent sponsors
+    /// numbering their vouchers the same way (e.g. both starting at id=1) must not be able
+    /// to grief each other by exhausting a voucher_id that belongs to a different sponsor's
+    /// batch entirely.
+    Used(Address, u64),
 }
 
 #[contract]
@@ -45,11 +49,17 @@ impl VoucherPaymasterContract {
         merkle_proof: Vec<BytesN<32>>,
         leaf_index: u32,
     ) -> bool {
+        // Without this, anyone observing a would-be-valid (user, voucher_id, max_fee, proof)
+        // combination before it lands on-chain could front-run and call this themselves,
+        // permanently marking the voucher used and denying the real user their subsidized
+        // transaction — a griefing vector, not a fund-theft one, but a real one.
+        user.require_auth();
+
         if (merkle_proof.len() as usize) > MAX_PROOF_DEPTH {
             panic!("Merkle proof is deeper than the supported maximum");
         }
 
-        let used_key = DataKey::Used(voucher_id);
+        let used_key = DataKey::Used(sponsor.clone(), voucher_id);
         if env.storage().persistent().has(&used_key) {
             panic!("Voucher already claimed");
         }

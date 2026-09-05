@@ -127,3 +127,52 @@ fn test_validate_voucher_rejects_a_sponsor_with_no_registered_batch() {
 
     client.validate_voucher(&sponsor, &user, &1001u64, &500_000i128, &Vec::new(&env), &0u32);
 }
+
+#[test]
+fn test_validate_voucher_does_not_let_one_sponsors_redemption_block_another_sponsors_voucher_with_the_same_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, VoucherPaymasterContract);
+    let client = VoucherPaymasterContractClient::new(&env, &contract_id);
+    let sponsor_a = Address::generate(&env);
+    let sponsor_b = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    // Both sponsors independently choose to number their first voucher `1001` — they have
+    // no way to coordinate on this, and shouldn't need to.
+    let voucher_id = 1001u64;
+    let max_fee = 500_000i128;
+
+    let leaf_a = VoucherPaymasterContract::compute_leaf(&env, voucher_id, max_fee);
+    let tree_a = build_tree(
+        &env,
+        [
+            leaf_a,
+            BytesN::from_array(&env, &[1u8; 32]),
+            BytesN::from_array(&env, &[2u8; 32]),
+            BytesN::from_array(&env, &[3u8; 32]),
+        ],
+    );
+    client.register_voucher_batch(&sponsor_a, &tree_a.root);
+    let proof_a = proof_for_leaf0(&env, &tree_a);
+    assert!(client.validate_voucher(&sponsor_a, &user, &voucher_id, &max_fee, &proof_a, &0u32));
+
+    // Sponsor B's completely unrelated batch happens to also use voucher_id 1001. Redeeming
+    // sponsor A's voucher above must not have any effect on sponsor B's.
+    let leaf_b = VoucherPaymasterContract::compute_leaf(&env, voucher_id, max_fee);
+    let tree_b = build_tree(
+        &env,
+        [
+            leaf_b,
+            BytesN::from_array(&env, &[9u8; 32]),
+            BytesN::from_array(&env, &[8u8; 32]),
+            BytesN::from_array(&env, &[7u8; 32]),
+        ],
+    );
+    client.register_voucher_batch(&sponsor_b, &tree_b.root);
+    let proof_b = proof_for_leaf0(&env, &tree_b);
+    assert!(
+        client.validate_voucher(&sponsor_b, &user, &voucher_id, &max_fee, &proof_b, &0u32),
+        "sponsor B's voucher must redeem independently of sponsor A's same-numbered voucher"
+    );
+}
