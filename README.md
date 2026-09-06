@@ -195,8 +195,8 @@ Before contributing code or opening pull requests, please review our contributor
 
 ### Pull Request Workflow Rules
 1. **Claim an Issue**: Browse open issues tagged `good first issue`, `intermediate`, or `advanced`.
-2. **Local Test Verification**: Ensure all local test suites pass 100% cleanly before submitting:
-   * Contracts: `cargo test --all`
+2. **Local Test Verification**: Run the same checks CI runs before submitting:
+   * Contracts: `bash scripts/check-source-artifacts.sh` && `cargo test --all`
    * Relayer & SDK: `npm test` && `npm run build`
 3. **Conventional Commits**: Use standardized git commit messages (`feat: ...`, `fix: ...`, `docs: ...`).
 

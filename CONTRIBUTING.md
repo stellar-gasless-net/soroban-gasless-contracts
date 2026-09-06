@@ -121,13 +121,16 @@ git checkout -b feat/issue-42-describe-your-feature
 
 ## 🧪 Testing & Verification Requirements
 
-Before submitting your Pull Request, verify that all tests compile and pass locally:
+Before submitting your Pull Request, run the exact same checks CI runs, in the same order:
 
 ```bash
-# 1. Run unit tests across all workspace contract crates
+# 1. Check for accidentally committed secrets or leftover local artifacts (.env, .claude/, etc.)
+bash scripts/check-source-artifacts.sh
+
+# 2. Run unit tests across all workspace contract crates
 cargo test --all
 
-# 2. Build release WASM binaries
+# 3. Build release WASM binaries
 cargo build --target wasm32v1-none --release
 ```
 
@@ -144,6 +147,7 @@ We enforce **Conventional Commits**:
 
 ### Pull Request Checklist
 When submitting a PR, verify:
+- [ ] `bash scripts/check-source-artifacts.sh` passes — no accidentally committed secrets or leftover local/dev artifacts.
 - [ ] `cargo test --all` passes 100% cleanly without errors or warnings.
 - [ ] Code is formatted with `cargo fmt`.
 - [ ] Appropriate unit tests are added in `src/test.rs`.
