@@ -94,6 +94,41 @@ This describes what each contract's code does *today*, verified against the sour
 ### Removed: Gas Estimator (2026-09-05)
 This workspace used to include a `gas-estimator` contract whose `estimate_execution_overhead` returned a hardcoded formula (`5000 + args.len() * 100`), ignoring the target contract and function entirely. Making that a genuine on-chain measurement turned out to be infeasible, not just unbuilt: a contract can only learn a call's real resource cost by actually invoking it (via `env.budget()` before/after), which means actually performing whatever side effects that call has — a token transfer would actually transfer tokens just to "estimate" its cost. That's unsafe and defeats the point of an estimate. Real Soroban gas/resource estimation is correctly an off-chain RPC preflight-simulation concern, and `stellar-gasless-relayer`'s `SorobanSimulator` already does this for real via `simulateTransaction` before ever sponsoring a fee — this protocol didn't need a second, on-chain, unavoidably-fake version of the same thing. The contract was removed from this workspace rather than left as a permanent placeholder; its old testnet address is kept in `deployments/testnet.json`'s notes purely as a historical record (a deployed Soroban contract can't be deleted from the ledger), not presented as a working feature.
 
+### Enforced Invariants → Test Mapping
+
+A few of the guarantees above, each pinned by a real test that would fail if the guarantee broke:
+
+| Invariant | Mapped Test |
+|---|---|
+| A batch call that fails partway rolls back entirely, including the nonce bump | `contracts/trusted-forwarder/src/test.rs` → `test_execute_batch_is_atomic_a_failing_call_rolls_back_the_whole_batch_including_the_nonce` |
+| Rotating a sponsor's voucher batch never orphans an unredeemed voucher from the old one | `contracts/voucher-paymaster/src/test.rs` → `test_rotating_to_a_new_batch_does_not_orphan_an_unredeemed_voucher_from_the_old_one` |
+| A session key can't call a function outside its own allowlist, even on an allowed contract | `contracts/account-abstraction-wallet/src/test.rs` → `test_check_auth_rejects_a_session_key_calling_a_non_whitelisted_function_on_an_allowed_contract` |
+| A session key's cumulative spend cap holds across separate authorizations, not just per call | `contracts/account-abstraction-wallet/src/test.rs` → `test_check_auth_rejects_a_second_transfer_once_cumulative_spend_would_exceed_the_cap` |
+
+### Error Codes
+
+Contracts with typed error enums (`voucher-paymaster` uses plain panic messages instead, listed inline in its own source):
+
+| Contract | Code | Variant | Meaning |
+|---|---|---|---|
+| `trusted-forwarder` | 1 | `AlreadyInitialized` | `initialize` called twice |
+| | 2 | `ExpiredDeadline` | Forwarded call's deadline has passed |
+| | 3 | `InvalidNonceSequence` | Nonce doesn't match the expected next value |
+| | 4 | `BatchLengthMismatch` | `execute_batch`'s call/target arrays differ in length |
+| | 5 | `UnauthorizedSigner` | Signature doesn't match the expected forwarder |
+| `token-paymaster` | 1 | `AlreadyInitialized` | `initialize` called twice |
+| | 2 | `UnauthorizedAdmin` | Caller is not the configured admin |
+| | 3 | `InsufficientBalance` | User can't cover the configured fee |
+| | 4 | `InvalidFeeAmount` | Configured fee is not a valid positive amount |
+| `account-abstraction-wallet` | 1 | `AlreadyInitialized` | `initialize` called twice |
+| | 2 | `UnauthorizedOwner` | Caller is not the wallet's owner |
+| | 3 | `SessionExpired` | Session key's `expires_at` has passed |
+| | 4 | `ContractNotWhitelisted` | Target contract isn't this session key's allowed contract |
+| | 5 | `InvalidPasskeySignature` | WebAuthn/secp256r1 signature failed verification |
+| | 6 | `UnknownSessionKey` | No session data registered for this key |
+| | 7 | `FunctionNotWhitelisted` | Target function isn't in this session key's allowlist |
+| | 8 | `SpendCapExceeded` | Cumulative SEP-41 transfer spend would exceed the session's cap |
+
 ---
 
 ## Deployment
