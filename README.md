@@ -258,6 +258,7 @@ Before contributing code or opening pull requests, please review our contributor
 ### Phase 2 (Upcoming)
 - [ ] **Multi-Sig Paymaster Governance Vaults**: Multi-signature approval thresholds for depositing and withdrawing XLM gas reserves.
 - [ ] **React Native & Flutter Adapters**: Mobile SDK adapters supporting mobile WebAuthn passkey enclaves.
+- [ ] **Adopt Protocol 28's atomic fleet upgrades (CAP-85) once tooling stabilizes.** Every ABI change to `trusted-forwarder`, `voucher-paymaster`, and `account-abstraction-wallet` in this workspace has meant a full redeploy to a new contract address, since Soroban currently has no in-place upgrade path — see `deployments/testnet.json`'s notes for the real history of that. CAP-85's shared, updatable code-reference pattern is aimed directly at this; mainnet vote is 2026-09-16, and this workspace hasn't touched it yet since there's no stable SDK support to build against, but it's the clear next step once there is.
 
 ### Phase 3 (Ecosystem Scaling & Mainnet Expansion)
 - [ ] **Decentralized Bundler Node Network**: Peer-to-peer relayer node network incentivized via fee splits.
