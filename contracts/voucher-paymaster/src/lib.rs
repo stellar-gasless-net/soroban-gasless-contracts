@@ -4,6 +4,11 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, B
 /// Bound on Merkle proof depth (supports batches up to 2^32 vouchers) so verification cost
 /// stays predictable.
 const MAX_PROOF_DEPTH: usize = 32;
+/// Stellar strkey addresses (both `G...` account keys and `C...` contract keys) are always
+/// exactly 56 ASCII characters — 32-byte payload + 1 version byte + 2-byte checksum, base32
+/// encoded. This is a protocol constant, not a guess (same constant used in zkident's
+/// credential_verifier for the same reason).
+const STRKEY_LEN: usize = 56;
 
 #[contracttype]
 pub enum DataKey {
@@ -84,10 +89,14 @@ impl VoucherPaymasterContract {
         merkle_proof: Vec<BytesN<32>>,
         leaf_index: u32,
     ) -> bool {
-        // Without this, anyone observing a would-be-valid (user, voucher_id, max_fee, proof)
-        // combination before it lands on-chain could front-run and call this themselves,
-        // permanently marking the voucher used and denying the real user their subsidized
-        // transaction — a griefing vector, not a fund-theft one, but a real one.
+        // `user` is bound directly into the leaf hash (see compute_leaf), not just passed as
+        // an argument here — require_auth() alone only proves the caller controls whichever
+        // address they pass in, it does NOT prove that address is the voucher's intended
+        // recipient. Without the leaf binding, anyone observing a valid (voucher_id, max_fee,
+        // proof) combination could call this with their own address instead of the real
+        // user's, and it would still verify: the Merkle root never encoded who the voucher
+        // was for. Binding `user` into the leaf means a proof only verifies for the specific
+        // address the sponsor actually committed to.
         user.require_auth();
 
         if (merkle_proof.len() as usize) > MAX_PROOF_DEPTH {
@@ -105,7 +114,7 @@ impl VoucherPaymasterContract {
             .get(&DataKey::SponsorRoot(sponsor.clone(), batch_version))
             .expect("sponsor has no registered voucher batch with this version");
 
-        let leaf = Self::compute_leaf(&env, voucher_id, max_fee);
+        let leaf = Self::compute_leaf(&env, &user, voucher_id, max_fee);
         let computed_root = Self::compute_root(&env, &leaf, &merkle_proof, leaf_index);
         if computed_root != root {
             return false;
@@ -120,8 +129,18 @@ impl VoucherPaymasterContract {
         true
     }
 
-    fn compute_leaf(env: &Env, voucher_id: u64, max_fee: i128) -> BytesN<32> {
-        let mut data = Bytes::from_slice(env, b"gasless:voucher-leaf:v1:");
+    /// Leaf is bound to `user` so a Merkle proof only verifies for the specific address the
+    /// sponsor committed to — see the comment in `validate_voucher` for why this matters.
+    fn compute_leaf(env: &Env, user: &Address, voucher_id: u64, max_fee: i128) -> BytesN<32> {
+        let addr_str = user.to_string();
+        if addr_str.len() as usize != STRKEY_LEN {
+            panic!("unexpected address strkey length");
+        }
+        let mut addr_buf = [0u8; STRKEY_LEN];
+        addr_str.copy_into_slice(&mut addr_buf);
+
+        let mut data = Bytes::from_slice(env, b"gasless:voucher-leaf:v2:");
+        data.append(&Bytes::from_slice(env, &addr_buf));
         data.append(&Bytes::from_array(env, &voucher_id.to_be_bytes()));
         data.append(&Bytes::from_array(env, &max_fee.to_be_bytes()));
         BytesN::from_array(env, &env.crypto().sha256(&data).to_array())
