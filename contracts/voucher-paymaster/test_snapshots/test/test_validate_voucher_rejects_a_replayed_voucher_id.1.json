@@ -17,7 +17,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "bytes": "65592dba25d5a75d890d70952eea052a069c3b06e5b8d767bba442736ec118a0"
+                  "bytes": "1fc88df0271d49d44266ae753f2ea09e30a9eaf1cabf114905f81d1bbfa067c0"
                 }
               ]
             }
@@ -172,7 +172,7 @@
                 },
                 "durability": "persistent",
                 "val": {
-                  "bytes": "65592dba25d5a75d890d70952eea052a069c3b06e5b8d767bba442736ec118a0"
+                  "bytes": "1fc88df0271d49d44266ae753f2ea09e30a9eaf1cabf114905f81d1bbfa067c0"
                 }
               }
             },
@@ -384,7 +384,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "bytes": "65592dba25d5a75d890d70952eea052a069c3b06e5b8d767bba442736ec118a0"
+                  "bytes": "1fc88df0271d49d44266ae753f2ea09e30a9eaf1cabf114905f81d1bbfa067c0"
                 }
               ]
             }
@@ -414,7 +414,7 @@
                   "u32": 1
                 },
                 {
-                  "bytes": "65592dba25d5a75d890d70952eea052a069c3b06e5b8d767bba442736ec118a0"
+                  "bytes": "1fc88df0271d49d44266ae753f2ea09e30a9eaf1cabf114905f81d1bbfa067c0"
                 }
               ]
             }
@@ -639,7 +639,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Voucher already claimed' from contract function 'Symbol(obj#179)'"
+                  "string": "caught panic 'Voucher already claimed' from contract function 'Symbol(obj#191)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

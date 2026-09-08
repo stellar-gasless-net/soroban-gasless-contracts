@@ -48,7 +48,7 @@ fn test_validate_voucher_accepts_a_real_valid_merkle_proof() {
 
     let voucher_id = 1001u64;
     let max_fee = 500_000i128;
-    let leaf0 = VoucherPaymasterContract::compute_leaf(&env, voucher_id, max_fee);
+    let leaf0 = VoucherPaymasterContract::compute_leaf(&env, &user, voucher_id, max_fee);
     let leaves = [
         leaf0,
         BytesN::from_array(&env, &[1u8; 32]),
@@ -74,7 +74,7 @@ fn test_validate_voucher_rejects_a_replayed_voucher_id() {
 
     let voucher_id = 1001u64;
     let max_fee = 500_000i128;
-    let leaf0 = VoucherPaymasterContract::compute_leaf(&env, voucher_id, max_fee);
+    let leaf0 = VoucherPaymasterContract::compute_leaf(&env, &user, voucher_id, max_fee);
     let leaves = [
         leaf0,
         BytesN::from_array(&env, &[1u8; 32]),
@@ -100,7 +100,7 @@ fn test_validate_voucher_rejects_a_claimed_fee_the_sponsor_never_committed_to() 
 
     let voucher_id = 1001u64;
     let committed_max_fee = 500_000i128;
-    let leaf0 = VoucherPaymasterContract::compute_leaf(&env, voucher_id, committed_max_fee);
+    let leaf0 = VoucherPaymasterContract::compute_leaf(&env, &user, voucher_id, committed_max_fee);
     let leaves = [
         leaf0,
         BytesN::from_array(&env, &[1u8; 32]),
@@ -144,7 +144,7 @@ fn test_validate_voucher_does_not_let_one_sponsors_redemption_block_another_spon
     let voucher_id = 1001u64;
     let max_fee = 500_000i128;
 
-    let leaf_a = VoucherPaymasterContract::compute_leaf(&env, voucher_id, max_fee);
+    let leaf_a = VoucherPaymasterContract::compute_leaf(&env, &user, voucher_id, max_fee);
     let tree_a = build_tree(
         &env,
         [
@@ -160,7 +160,7 @@ fn test_validate_voucher_does_not_let_one_sponsors_redemption_block_another_spon
 
     // Sponsor B's completely unrelated batch happens to also use voucher_id 1001. Redeeming
     // sponsor A's voucher above must not have any effect on sponsor B's.
-    let leaf_b = VoucherPaymasterContract::compute_leaf(&env, voucher_id, max_fee);
+    let leaf_b = VoucherPaymasterContract::compute_leaf(&env, &user, voucher_id, max_fee);
     let tree_b = build_tree(
         &env,
         [
@@ -188,7 +188,7 @@ fn test_rotating_to_a_new_batch_does_not_orphan_an_unredeemed_voucher_from_the_o
     // Batch 1: sponsor's first ever voucher batch.
     let old_voucher_id = 1001u64;
     let max_fee = 500_000i128;
-    let old_leaf = VoucherPaymasterContract::compute_leaf(&env, old_voucher_id, max_fee);
+    let old_leaf = VoucherPaymasterContract::compute_leaf(&env, &user, old_voucher_id, max_fee);
     let old_tree = build_tree(
         &env,
         [
@@ -204,7 +204,7 @@ fn test_rotating_to_a_new_batch_does_not_orphan_an_unredeemed_voucher_from_the_o
     // Sponsor rotates to a brand new batch (e.g. next month's voucher run) before the user
     // above ever redeemed their batch-1 voucher.
     let new_voucher_id = 1001u64; // deliberately reuses the same id — must not collide
-    let new_leaf = VoucherPaymasterContract::compute_leaf(&env, new_voucher_id, max_fee);
+    let new_leaf = VoucherPaymasterContract::compute_leaf(&env, &user, new_voucher_id, max_fee);
     let new_tree = build_tree(
         &env,
         [
@@ -232,6 +232,45 @@ fn test_rotating_to_a_new_batch_does_not_orphan_an_unredeemed_voucher_from_the_o
         client.validate_voucher(&sponsor, &user, &new_version, &new_voucher_id, &max_fee, &new_proof, &0u32),
         "the new batch's voucher must redeem independently of the old batch's same-numbered one"
     );
+}
+
+#[test]
+fn test_validate_voucher_rejects_a_different_user_redeeming_the_same_proof() {
+    // Regression test for a real front-running/theft bug: the leaf used to be
+    // sha256(voucher_id || max_fee) with no user binding, so anyone who observed a valid
+    // (voucher_id, max_fee, proof) combination in transit (e.g. a relayer forwarding it)
+    // could call validate_voucher with their OWN address instead of the intended user's, and
+    // it would still verify — stealing the voucher's sponsored transaction and permanently
+    // denying the real recipient (require_auth() only proves the caller controls whichever
+    // address they choose to pass in, it never proved that address was who the voucher was
+    // actually for). Binding `user` into the leaf fixes this: the same proof must only verify
+    // for the specific address the sponsor committed to.
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, sponsor) = setup(&env);
+    let real_user = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    let voucher_id = 1001u64;
+    let max_fee = 500_000i128;
+    let leaf0 = VoucherPaymasterContract::compute_leaf(&env, &real_user, voucher_id, max_fee);
+    let leaves = [
+        leaf0,
+        BytesN::from_array(&env, &[1u8; 32]),
+        BytesN::from_array(&env, &[2u8; 32]),
+        BytesN::from_array(&env, &[3u8; 32]),
+    ];
+    let tree = build_tree(&env, leaves);
+    let version = client.register_voucher_batch(&sponsor, &tree.root);
+    let proof = proof_for_leaf0(&env, &tree);
+
+    // The attacker observed (voucher_id, max_fee, proof) and tries to redeem it as themselves.
+    let stolen = client.validate_voucher(&sponsor, &attacker, &version, &voucher_id, &max_fee, &proof, &0u32);
+    assert!(!stolen, "a proof committed to real_user must not verify for a different address");
+
+    // The real user's own redemption of the exact same proof must still succeed.
+    let genuine = client.validate_voucher(&sponsor, &real_user, &version, &voucher_id, &max_fee, &proof, &0u32);
+    assert!(genuine, "the actual intended recipient must still be able to redeem their own voucher");
 }
 
 #[test]
