@@ -134,6 +134,72 @@ impl SmartAccountWalletContract {
         env.storage().instance().get(&symbol_short!("owner")).unwrap()
     }
 
+    /// (Owner-gated) Designates a separate address that can rotate this wallet's passkey via
+    /// `recover_passkey` if the owner ever loses the device holding it. Modeled on Coinbase
+    /// Smart Wallet's "recovery signer": a distinct credential from day-to-day signing, kept
+    /// offline/cold, whose only power is replacing the passkey — it can't call `execute()` or
+    /// spend funds directly. Calling this again replaces any previously set recovery signer
+    /// rather than adding a second one; this wallet supports exactly one at a time, matching
+    /// the single-owner model `init`/`add_session_key` already use.
+    pub fn set_recovery_signer(env: Env, owner: Address, recovery_signer: Address) {
+        let stored_owner: Address = env.storage().instance().get(&symbol_short!("owner")).unwrap();
+        if owner != stored_owner {
+            panic!("{}", WalletError::UnauthorizedOwner as u32);
+        }
+        owner.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("recovery"), &recovery_signer);
+
+        env.events()
+            .publish((symbol_short!("rec_set"),), recovery_signer);
+    }
+
+    /// (Owner-gated) Removes the recovery signer, if one is set. After this, `recover_passkey`
+    /// can no longer be used until a new recovery signer is designated.
+    pub fn remove_recovery_signer(env: Env, owner: Address) {
+        let stored_owner: Address = env.storage().instance().get(&symbol_short!("owner")).unwrap();
+        if owner != stored_owner {
+            panic!("{}", WalletError::UnauthorizedOwner as u32);
+        }
+        owner.require_auth();
+
+        env.storage().instance().remove(&symbol_short!("recovery"));
+        env.events().publish((symbol_short!("rec_rm"),), ());
+    }
+
+    /// The currently designated recovery signer, if any.
+    pub fn get_recovery_signer(env: Env) -> Option<Address> {
+        env.storage().instance().get(&symbol_short!("recovery"))
+    }
+
+    /// Replaces this wallet's passkey public key, authorized by the recovery signer instead
+    /// of the (now-inaccessible) old passkey — this is the actual emergency recovery path.
+    /// Deliberately narrow in scope: it only rotates the passkey. It does NOT touch existing
+    /// session keys (that's tracked separately; see the org's open issue on session key
+    /// revocation) — a real recovery flow should be paired with reviewing/re-adding session
+    /// keys afterward if a compromised device is the reason recovery was needed.
+    pub fn recover_passkey(env: Env, recovery_signer: Address, new_passkey_pubkey: BytesN<65>) {
+        let stored_recovery: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("recovery"))
+            .ok_or(WalletError::NoRecoverySignerSet)
+            .unwrap_or_else(|e| panic!("{}", e as u32));
+        if recovery_signer != stored_recovery {
+            panic!("{}", WalletError::UnauthorizedOwner as u32);
+        }
+        recovery_signer.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("passkey"), &new_passkey_pubkey);
+
+        env.events()
+            .publish((symbol_short!("rec_used"),), ());
+    }
+
     /// Verify a WebAuthn passkey assertion against this wallet's stored public key,
     /// independent of the account-auth flow (useful for e.g. a relayer pre-checking a
     /// signature before submitting a transaction). Shares its core logic with
