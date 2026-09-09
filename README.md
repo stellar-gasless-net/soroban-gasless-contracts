@@ -24,6 +24,22 @@ Our protocol leverages **Stellar Native Fee-Bump Transactions (`FeeBumpTransacti
 
 ---
 
+## Contents
+
+- [Problem Statement & Technical Solution](#problem-statement--technical-solution)
+- [System Architecture & Data Flow](#system-architecture--data-flow)
+- [Core Protocol Features — What's Actually Implemented](#core-protocol-features--whats-actually-implemented)
+- [Enforced Invariants → Test Mapping](#enforced-invariants--test-mapping)
+- [Error Codes](#error-codes)
+- [Deployment](#deployment)
+- [Integration & Usage Code Examples](#integration--usage-code-examples)
+- [Comprehensive Repository Suite](#comprehensive-repository-suite)
+- [Open-Source Governance & Contributing](#open-source-governance--contributing)
+- [Protocol Roadmap & Future Upgrades](#protocol-roadmap--future-upgrades)
+- [Security Policy & License](#security-policy--license)
+
+---
+
 ## System Architecture & Data Flow
 
 ```
@@ -73,24 +89,44 @@ Our protocol leverages **Stellar Native Fee-Bump Transactions (`FeeBumpTransacti
 
 This describes what each contract's code does *today*, verified against the source, not the original aspirational spec. Where a feature is planned but not built, it's called out explicitly instead of implied.
 
-### 1. Trusted Forwarder (`trusted-forwarder`)
+<details open>
+<summary><strong>1. Trusted Forwarder (<code>trusted-forwarder</code>)</strong></summary>
+
 * **Implemented**: sequential nonce replay guard, a deadline expiry check, single-call dispatch via `execute_forwarded`, atomic multi-call dispatch via `execute_batch` (added 2026-09-06 — one signature and one nonce covering the whole `Vec<BatchCall>`; if any call in the batch panics, the entire invocation rolls back, including the nonce bump, since Soroban transactions are atomic by default), and `Forwarded`/batch-forward events.
 * **No separate EIP-712-style domain separator, and this isn't a gap.** That roadmap item was carried over from an Ethereum-shaped mental model that doesn't map onto how Soroban authorization actually works: `user.require_auth()` is validated by the host against the *current network's* passphrase and the *exact* invocation tree being authorized — including this specific contract's address at its position in that tree. A signed authorization for calling this contract cannot be replayed against a different contract instance or a different network, which is exactly what EIP-712's `verifyingContract`/`chainId` fields exist to bolt onto Ethereum's otherwise-domainless signing. Soroban has that binding natively; there was never a real gap here to close.
 
-### 2. Paymasters (`token-paymaster`, `voucher-paymaster`)
+</details>
+
+<details open>
+<summary><strong>2. Paymasters (<code>token-paymaster</code>, <code>voucher-paymaster</code>)</strong></summary>
+
 * **`token-paymaster`, implemented**: a flat per-transaction fee charged in a single configured SAC token, transferred straight to the relayer treasury.
 * **`token-paymaster`, not implemented yet**: no USDC→XLM auto-swap, no dynamic/volume-based discount tiers (see open issues).
 * **`voucher-paymaster`, implemented**: real Merkle-inclusion coupons, not opaque IDs. A sponsor calls `register_voucher_batch()` (their one live signature) to commit to a whole batch via its Merkle root; individual vouchers then redeem through `validate_voucher()` with a real path proving `(voucher_id, max_fee)` was actually in that batch — no further sponsor signature needed per redemption, which is the actual point of a voucher system. This replaced the old design, which required the sponsor to live-sign *every single redemption* (defeating the "pre-approve a batch" model entirely) and never checked `max_fee` against anything, so a caller could claim any fee cap for a given voucher ID. Single-use replay protection (a voucher ID can't be redeemed twice, scoped per batch) is unchanged. **Real batch versioning (2026-09-06)**: `register_voucher_batch()` no longer overwrites a sponsor's previous root — each call gets its own version number (returned to the caller) and every version a sponsor has ever registered stays independently redeemable via `validate_voucher()`'s new `batch_version` parameter. Rotating to a new batch no longer orphans unredeemed vouchers from an old one, and `get_latest_batch_version()` lets tooling look up a sponsor's current batch.
 
-### 3. Smart Account Wallet (`account-abstraction-wallet`)
+</details>
+
+<details open>
+<summary><strong>3. Smart Account Wallet (<code>account-abstraction-wallet</code>)</strong></summary>
+
 * **Implemented and wired for real**: `execute()` calls `env.current_contract_address().require_auth()` — since this contract implements Soroban's `CustomAccountInterface`, that routes through this contract's own `__check_auth`, which now accepts one of two real signature kinds. `WalletSignature::Owner` verifies a real WebAuthn/secp256r1 passkey signature (challenge-embedding check, `authenticatorData || SHA-256(clientDataJSON)` reconstruction, `secp256r1_verify` against the stored key) and grants full authority — correctly so, since the host already binds the signed digest to the exact set of calls being authorized. `WalletSignature::Session` is scoped: a session key added via `add_session_key` targets one contract, one **per-function allowlist** (added 2026-09-06 — "can call `swap` but not `withdraw_all`" on the same contract is now real, not just described in the roadmap), an optional **cumulative spend cap** (also added 2026-09-06, tracked per session key and persisted across separate authorizations — not reset per call), and an expiration. `__check_auth` inspects `auth_contexts` to confirm every call the session key is being used for — including reading the real target *and function* out of `execute()`'s own arguments, not just its own contract address — matches that allowlist, rejects it if expired, enforces the spend cap for SEP-41 `transfer`/`transfer_from` calls specifically (the one argument-position convention every real Stellar asset actually follows — there's no general way to know where "amount" lives in an arbitrary function's arguments), and only then asks the host to verify the session key's own real signature via `require_auth()`. `verify_passkey_signature()` remains available as a standalone entry point and shares its core logic with `__check_auth`'s owner path via one function (`passkey_message_digest`). Covered by 15 tests using real cryptographic material: a real P-256 keypair for the owner-passkey tests, and real `Context` values matching what the host actually builds for the session-key tests (accepts an in-scope call, rejects an out-of-scope call/function even with a genuinely valid signature, rejects an expired key, rejects an unregistered key, enforces the spend cap both for a single over-cap transfer and for cumulative spend across two separate authorizations).
 * **Recovery signer (added 2026-09-09), modeled on Coinbase Smart Wallet's recovery model**: `set_recovery_signer(admin, recovery_signer)` designates a separate address — distinct from the day-to-day passkey, meant to be kept offline/cold — that can later call `recover_passkey(recovery_signer, new_passkey_pubkey)` to rotate the wallet's passkey if the owner ever loses the device holding it. `remove_recovery_signer(admin)` clears it, and `get_recovery_signer()` reads the current one. Deliberately narrow in scope: it only rotates the passkey, it does not touch existing session keys (see the open session-key-revocation issue) — a real recovery flow should be paired with reviewing/re-adding session keys afterward if a compromised device is the reason recovery was needed. **Known limitation, tracked as an open issue**: recovery takes effect atomically with no timelock/delay window, unlike Coinbase's own model — a compromised recovery-signer key currently means instant takeover with no chance for the legitimate owner to notice and cancel first. Covered by 6 tests: setting/removing/reading the recovery signer, a successful passkey rotation (confirming the old passkey stops verifying and the new one works), and rejection of a non-designated caller or a missing recovery signer.
 
-### 4. Relayer Keypair Rotation (`stellar-gasless-relayer`)
+</details>
+
+<details open>
+<summary><strong>4. Relayer Keypair Rotation (<code>stellar-gasless-relayer</code>)</strong></summary>
+
 * **Implemented**: rotates through the configured `RELAYER_SECRETS` pool per request, and pre-flight simulates every inner transaction against Soroban RPC before sponsoring the fee.
 
-### 5. Console UI (`gasless-relayer-dashboard`)
+</details>
+
+<details open>
+<summary><strong>5. Console UI (<code>gasless-relayer-dashboard</code>)</strong></summary>
+
 * **UI mockup for most panels, two real integrations, live at [gasless-relayer-dashboard.vercel.app](https://gasless-relayer-dashboard.vercel.app/) (also mirrored on [GitHub Pages](https://stellar-gasless-net.github.io/gasless-relayer-dashboard/)).** See that repo's README for exactly which parts are real (a live relayer status poll and an end-to-end gasless transaction demo) versus mockup — the relayer it's designed to talk to isn't deployed anywhere public, so those two features need a locally-running relayer to actually light up.
+
+</details>
 
 ### Removed: Gas Estimator (2026-09-05)
 This workspace used to include a `gas-estimator` contract whose `estimate_execution_overhead` returned a hardcoded formula (`5000 + args.len() * 100`), ignoring the target contract and function entirely. Making that a genuine on-chain measurement turned out to be infeasible, not just unbuilt: a contract can only learn a call's real resource cost by actually invoking it (via `env.budget()` before/after), which means actually performing whatever side effects that call has — a token transfer would actually transfer tokens just to "estimate" its cost. That's unsafe and defeats the point of an estimate. Real Soroban gas/resource estimation is correctly an off-chain RPC preflight-simulation concern, and `stellar-gasless-relayer`'s `SorobanSimulator` already does this for real via `simulateTransaction` before ever sponsoring a fee — this protocol didn't need a second, on-chain, unavoidably-fake version of the same thing. The contract was removed from this workspace rather than left as a permanent placeholder; its old testnet address is kept in `deployments/testnet.json`'s notes purely as a historical record (a deployed Soroban contract can't be deleted from the ledger), not presented as a working feature.
