@@ -150,6 +150,134 @@ fn test_verify_passkey_signature_rejects_a_tampered_authenticator_data() {
     );
 }
 
+#[test]
+fn test_set_recovery_signer_and_get_recovery_signer() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+
+    assert_eq!(client.get_recovery_signer(), None, "no recovery signer set at init");
+
+    let recovery = Address::generate(&env);
+    client.set_recovery_signer(&client.get_owner(), &recovery);
+
+    assert_eq!(client.get_recovery_signer(), Some(recovery));
+}
+
+/// A second, distinct keypair standing in for a freshly-registered passkey on a new device.
+fn second_test_keypair() -> (SigningKey, [u8; 65]) {
+    let secret_bytes: [u8; 32] = [9u8; 32];
+    let signing_key = SigningKey::from_bytes((&secret_bytes).into()).expect("valid scalar");
+    let encoded = signing_key.verifying_key().to_encoded_point(false);
+    let mut pubkey_bytes = [0u8; 65];
+    pubkey_bytes.copy_from_slice(encoded.as_bytes());
+    (signing_key, pubkey_bytes)
+}
+
+#[test]
+fn test_recover_passkey_makes_the_new_passkey_verify() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _old_signing_key) = init_wallet(&env);
+    let owner = client.get_owner();
+
+    let recovery = Address::generate(&env);
+    client.set_recovery_signer(&owner, &recovery);
+
+    let (new_signing_key, new_pubkey_bytes) = second_test_keypair();
+    let new_passkey = BytesN::from_array(&env, &new_pubkey_bytes);
+    client.recover_passkey(&recovery, &new_passkey);
+
+    let (challenge, client_data_json, authenticator_data, new_signature) =
+        build_assertion(&env, &new_signing_key, [2u8; 32]);
+    // Should not panic — the new passkey is now the one on file.
+    client.verify_passkey_signature(&challenge, &client_data_json, &authenticator_data, &new_signature);
+}
+
+#[test]
+#[should_panic]
+fn test_recover_passkey_makes_the_old_passkey_stop_verifying() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, old_signing_key) = init_wallet(&env);
+    let owner = client.get_owner();
+
+    let recovery = Address::generate(&env);
+    client.set_recovery_signer(&owner, &recovery);
+
+    let (_new_signing_key, new_pubkey_bytes) = second_test_keypair();
+    let new_passkey = BytesN::from_array(&env, &new_pubkey_bytes);
+    client.recover_passkey(&recovery, &new_passkey);
+
+    // The OLD passkey must no longer verify once recovery has rotated it out.
+    let (challenge, client_data_json, authenticator_data, old_signature) =
+        build_assertion(&env, &old_signing_key, [1u8; 32]);
+    client.verify_passkey_signature(&challenge, &client_data_json, &authenticator_data, &old_signature);
+}
+
+#[test]
+#[should_panic]
+fn test_recover_passkey_rejects_an_address_that_is_not_the_designated_recovery_signer() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+
+    let real_recovery = Address::generate(&env);
+    client.set_recovery_signer(&client.get_owner(), &real_recovery);
+
+    let impostor = Address::generate(&env);
+    let (_signing_key, pubkey_bytes) = test_keypair();
+    let new_passkey = BytesN::from_array(&env, &pubkey_bytes);
+
+    client.recover_passkey(&impostor, &new_passkey);
+}
+
+#[test]
+#[should_panic]
+fn test_recover_passkey_rejects_when_no_recovery_signer_was_ever_set() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+
+    let someone = Address::generate(&env);
+    let (_signing_key, pubkey_bytes) = test_keypair();
+    let new_passkey = BytesN::from_array(&env, &pubkey_bytes);
+
+    client.recover_passkey(&someone, &new_passkey);
+}
+
+#[test]
+fn test_remove_recovery_signer_clears_it() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let owner = client.get_owner();
+
+    let recovery = Address::generate(&env);
+    client.set_recovery_signer(&owner, &recovery);
+    assert_eq!(client.get_recovery_signer(), Some(recovery));
+
+    client.remove_recovery_signer(&owner);
+    assert_eq!(client.get_recovery_signer(), None);
+}
+
+#[test]
+#[should_panic]
+fn test_recover_passkey_is_blocked_once_the_recovery_signer_is_removed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let owner = client.get_owner();
+
+    let recovery = Address::generate(&env);
+    client.set_recovery_signer(&owner, &recovery);
+    client.remove_recovery_signer(&owner);
+
+    let (_signing_key, pubkey_bytes) = test_keypair();
+    let new_passkey = BytesN::from_array(&env, &pubkey_bytes);
+    client.recover_passkey(&recovery, &new_passkey);
+}
+
 // __check_auth tests below call the CustomAccountInterface method directly — this is the
 // literal function the Soroban host invokes when something calls
 // `env.current_contract_address().require_auth()` inside execute(), not a re-implementation

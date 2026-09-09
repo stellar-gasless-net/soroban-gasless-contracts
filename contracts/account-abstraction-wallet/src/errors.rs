@@ -12,4 +12,5 @@ pub enum WalletError {
     UnknownSessionKey = 6,
     FunctionNotWhitelisted = 7,
     SpendCapExceeded = 8,
+    NoRecoverySignerSet = 9,
 }
