@@ -109,6 +109,16 @@ impl SmartAccountWalletContract {
         );
     }
 
+    /// Read-only: a session key's real registered permissions — the same `SessionData`
+    /// `__check_auth` itself enforces, not a separate summary that could drift from what's
+    /// actually checked. Returns `None` if this key was never registered (or was registered
+    /// and its data was never removed — there's no separate revoke/remove entry point yet,
+    /// see the org's open issue on session key revocation).
+    pub fn get_session_key(env: Env, session_key: Address) -> Option<SessionData> {
+        let key = (symbol_short!("sess"), session_key);
+        env.storage().persistent().get(&key)
+    }
+
     /// Execute transaction through Smart Account.
     ///
     /// Requires auth on the wallet's OWN address (not `owner`) — since this contract

@@ -359,6 +359,34 @@ fn add_dapp_session_key(env: &Env, client: &SmartAccountWalletContractClient) ->
     (session_key, dapp_contract)
 }
 
+#[test]
+fn test_get_session_key_returns_the_real_registered_permissions() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let session_key = Address::generate(&env);
+    let dapp_contract = Address::generate(&env);
+    let allowed_functions: Vec<Symbol> = Vec::from_array(&env, [Symbol::new(&env, "swap")]);
+    client.add_session_key(&session_key, &dapp_contract, &allowed_functions, &Some(5_000i128), &10_000u64);
+
+    let data = client.get_session_key(&session_key).expect("session key should be registered");
+    assert_eq!(data.allowed_contract, dapp_contract);
+    assert_eq!(data.allowed_functions, allowed_functions);
+    assert_eq!(data.spend_cap, Some(5_000i128));
+    assert_eq!(data.spent, 0);
+    assert_eq!(data.expires_at, 10_000u64);
+}
+
+#[test]
+fn test_get_session_key_returns_none_for_a_key_that_was_never_registered() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signing_key) = init_wallet(&env);
+    let never_registered = Address::generate(&env);
+
+    assert_eq!(client.get_session_key(&never_registered), None);
+}
+
 fn execute_context(env: &Env, wallet: &Address, target: &Address) -> Vec<Context> {
     execute_context_fn(env, wallet, target, "noop", Vec::new(env))
 }
