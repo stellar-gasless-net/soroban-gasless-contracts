@@ -385,7 +385,7 @@ fn check_session_scope(
                     }
                 }
             }
-            Context::CreateContractHostFn(_) => {
+            Context::CreateContractHostFn(_) | Context::CreateContractWithCtorHostFn(_) => {
                 return Err(WalletError::ContractNotWhitelisted);
             }
         }
