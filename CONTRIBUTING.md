@@ -90,7 +90,7 @@ There used to be a fifth contract here, `gas-estimator`. It was removed 2026-09-
 
 ### Step 1: Claim or Pick an Issue
 Look through our open [GitHub Issues](https://github.com/stellar-gasless-net/soroban-gasless-contracts/issues). Filter by labels:
-- `good first issue`: Ideal for first-time contributors.
+- [`good first issue`](https://github.com/stellar-gasless-net/soroban-gasless-contracts/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22): Ideal for first-time contributors.
 - `intermediate`: Modular features, tests, or contract enhancements.
 - `advanced`: Core protocol cryptography, Passkey verification, or security auditing.
 
