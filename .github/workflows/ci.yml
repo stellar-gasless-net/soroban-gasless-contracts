@@ -6,15 +6,18 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test Soroban Contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check for committed secrets or leftover local artifacts
         run: bash scripts/check-source-artifacts.sh
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, pinned 2026-09-17
         with:
           targets: wasm32v1-none
       - name: Run Cargo Test
