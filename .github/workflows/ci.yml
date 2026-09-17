@@ -11,7 +11,7 @@ jobs:
     name: Test Soroban Contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check for committed secrets or leftover local artifacts
         run: bash scripts/check-source-artifacts.sh
       - uses: dtolnay/rust-toolchain@stable
