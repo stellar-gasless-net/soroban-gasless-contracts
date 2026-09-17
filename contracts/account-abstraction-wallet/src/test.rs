@@ -14,7 +14,7 @@ fn test_keypair() -> (SigningKey, [u8; 65]) {
     let secret_bytes: [u8; 32] = [7u8; 32];
     let signing_key = SigningKey::from_bytes((&secret_bytes).into()).expect("valid scalar");
     let verifying_key = signing_key.verifying_key();
-    let encoded = verifying_key.to_encoded_point(false); // uncompressed SEC-1, 65 bytes
+    let encoded = verifying_key.to_sec1_point(false); // uncompressed SEC-1, 65 bytes
     let mut pubkey_bytes = [0u8; 65];
     pubkey_bytes.copy_from_slice(encoded.as_bytes());
     (signing_key, pubkey_bytes)
@@ -65,7 +65,7 @@ fn build_assertion(
         .expect("sign_prehash should succeed for a valid 32-byte digest");
     // Soroban's secp256r1_verify requires the signature's 's' value in low-S normalized
     // form (standard anti-malleability rule) — raw ECDSA signing doesn't guarantee this.
-    let sig = sig.normalize_s().unwrap_or(sig);
+    let sig = sig.normalize_s();
     let sig_bytes: [u8; 64] = sig.to_bytes().into();
     let signature = BytesN::from_array(env, &sig_bytes);
 
@@ -168,7 +168,7 @@ fn test_set_recovery_signer_and_get_recovery_signer() {
 fn second_test_keypair() -> (SigningKey, [u8; 65]) {
     let secret_bytes: [u8; 32] = [9u8; 32];
     let signing_key = SigningKey::from_bytes((&secret_bytes).into()).expect("valid scalar");
-    let encoded = signing_key.verifying_key().to_encoded_point(false);
+    let encoded = signing_key.verifying_key().to_sec1_point(false);
     let mut pubkey_bytes = [0u8; 65];
     pubkey_bytes.copy_from_slice(encoded.as_bytes());
     (signing_key, pubkey_bytes)
